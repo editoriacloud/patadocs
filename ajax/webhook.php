@@ -46,10 +46,12 @@ if (!$order) { $setResult('order_not_found'); json_out(['ok' => true, 'message' 
 db_exec("UPDATE payments SET webhook_status = 'received' WHERE order_id = ? AND webhook_status = 'none' ORDER BY id DESC LIMIT 1", [$order['id']]);
 
 if ($eventType === 'payment.confirmed' || $hub['state'] === 'success') {
-    // Prefer the Hub's own status endpoint (normalised amount + receipt); fall back to this signed event
-    // if the Hub cannot be reached right now.
+    // The Hub documents its signed webhook as the source of truth for "paid". Its status endpoint is asked first
+    // only for the normalised amount + receipt; if it is unreachable or still lags behind the event, the signed
+    // event itself is used (order_finalize still checks order code, amount, currency, intent and receipt).
     $c = hub_check($order);
     $source = $c['ok'] && $c['hub']['state'] === 'success' ? $c['hub'] : array_merge($hub, ['state' => 'success']);
+    if ($c['ok'] && $c['hub']['state'] !== 'success') { log_error('Webhook ' . $eventId . ' says paid but the Hub status endpoint says "' . $c['hub']['raw_status'] . '" for ' . $order['order_code'] . ' — trusting the signed webhook.'); }
     $r = order_finalize((int)$order['id'], $source, 'webhook');
     $setResult($r['result']);
     json_out(['ok' => true, 'result' => $r['result']]);

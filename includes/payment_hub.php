@@ -379,7 +379,8 @@ function order_finalize(int $orderId, array $hub, string $source): array
  */
 function order_refresh(array $order, bool $force = false): array
 {
-    if (!in_array($order['status'], ['pending', 'expired'], true)) { return $order; }
+    // 'failed' is re-checked too: a cancelled STK prompt can still be followed by a PayBill payment on the same invoice
+    if (!in_array($order['status'], ['pending', 'expired', 'failed'], true)) { return $order; }
     $pay = db_row('SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC LIMIT 1', [$order['id']]);
     if ($pay && !$force && $pay['last_checked_at'] && time() - strtotime($pay['last_checked_at']) < 3) { return $order; }
     if ($pay) { db_exec('UPDATE payments SET last_checked_at = NOW() WHERE id = ?', [$pay['id']]); }
@@ -458,10 +459,10 @@ function order_download_links(array $order): array
     $pdo = db(); $pdo->beginTransaction();
     try { db_row('SELECT id FROM orders WHERE id = ? FOR UPDATE', [$order['id']]); tokens_issue($order); $pdo->commit(); }
     catch (Throwable $e) { if ($pdo->inTransaction()) { $pdo->rollBack(); } log_error('tokens: ' . $e->getMessage()); }
-    $rows = db_all("SELECT t.token, d.title, d.file_ext, d.pages FROM download_tokens t JOIN documents d ON d.id = t.document_id
+    $rows = db_all("SELECT t.token, t.download_count, d.title, d.file_ext, d.pages FROM download_tokens t JOIN documents d ON d.id = t.document_id
                     WHERE t.order_id = ? AND t.type = 'paid' AND t.status = 'active' AND t.expires_at > NOW() AND (t.max_downloads = 0 OR t.download_count < t.max_downloads) ORDER BY d.title", [$order['id']]);
     $out = [];
-    foreach ($rows as $r) { $out[] = ['title' => $r['title'], 'format' => doc_ext_label($r['file_ext']) . ($r['pages'] ? ' · ' . pages_label($r['pages']) : ''), 'url' => download_url($r['token'])]; }
+    foreach ($rows as $r) { $out[] = ['title' => $r['title'], 'format' => doc_ext_label($r['file_ext']) . ($r['pages'] ? ' · ' . pages_label($r['pages']) : ''), 'url' => download_url($r['token']), 'fresh' => (int)$r['download_count'] === 0]; }
     return $out;
 }
 

@@ -21,9 +21,10 @@ include __DIR__ . '/includes/header.php';
         <div style="font-size:1.1rem; color:var(--text-secondary); margin-bottom:18px;">Your document is ready.</div>
         <?php foreach ($links as $l) { ?>
             <div class="doc-selected" style="text-align:left;"><div class="name" style="color:var(--text-primary);"><?= e($l['title']) ?></div><div class="doc-facts"><span><?= e($l['format']) ?></span></div>
-                <a class="btn-classic success block" href="<?= e($l['url']) ?>" <?= count($links) === 1 ? 'data-autodownload' : '' ?>><span style="font-size:1.1rem;">⬇ DOWNLOAD NOW</span></a></div>
+                <a class="btn-classic success block" href="<?= e($l['url']) ?>" <?= count($links) === 1 && $l['fresh'] ? 'data-autodownload' : '' ?>><span style="font-size:1.1rem;">⬇ DOWNLOAD NOW</span></a></div>
         <?php } ?>
-        <?php if (!$links) { echo '<div class="alert alert-warn">Your download links have expired or been used. <a href="' . e(page_url('recover')) . '"><strong>Recover your purchase</strong></a> to get a fresh link.</div>'; } else { echo '<div class="help">Your download will start automatically... Having trouble? Click <strong>Download Now</strong>.</div>'; } ?>
+        <?php if (!$links) { echo '<div class="alert alert-warn">Your download links have expired or been used. <a href="' . e(page_url('recover')) . '"><strong>Recover your purchase</strong></a> to get a fresh link.</div>'; } elseif (count($links) === 1 && $links[0]['fresh']) { echo '<div class="help">Your download will start automatically... Having trouble? Click <strong>Download Now</strong>.</div>'; }
+        else { echo '<div class="help">Click <strong>Download Now</strong> to download. Each link can be used a limited number of times.</div>'; } ?>
         <div class="result-area" style="margin-top:16px; text-align:left;">
             <div class="result-row"><strong>Order ID:</strong> <span class="mono"><?= e($order['order_code']) ?></span></div>
             <?php if ($order['mpesa_receipt']) { echo '<div class="result-row"><strong>M-Pesa receipt:</strong> <span class="mono">' . e($order['mpesa_receipt']) . '</span></div>'; } ?>
