@@ -7,6 +7,7 @@ $footerLinks = [
     ['Privacy Policy', page_url('privacy-policy')], ['Terms', page_url('terms')], ['Cookies', page_url('cookie-policy')],
     ['Copyright', page_url('copyright')], ['Disclaimer', page_url('disclaimer')],
 ];
+if (blog_enabled()) { array_splice($footerLinks, 5, 0, [[setting('blog_title', 'Blog'), blog_url()]]); }
 ?>
 <?= ad_slot('footer', $meta) ?>
 </div><!-- /.aspx-content -->

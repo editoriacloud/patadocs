@@ -9,12 +9,14 @@ $siteName = setting('site_name', 'PATADOCS');
 $brand = preg_match('/^(.+?)(docs)$/i', $siteName, $bm) ? e($bm[1]) . '<span>' . e($bm[2]) . '</span>' : e($siteName);
 static $badgeCounts = null;
 if ($badgeCounts === null) {
-    $badgeCounts = ['contrib' => 0, 'requests' => 0, 'reports' => 0, 'reviews' => 0, 'jobs' => 0];
+    $badgeCounts = ['contrib' => 0, 'requests' => 0, 'reports' => 0, 'reviews' => 0, 'jobs' => 0, 'comments' => 0, 'pending_posts' => 0];
     try {
         $badgeCounts['contrib'] = (int)db_val("SELECT COUNT(*) FROM contributions WHERE status IN ('pending','under_review')");
         $badgeCounts['requests'] = (int)db_val("SELECT COUNT(*) FROM document_requests WHERE status = 'new'");
         $badgeCounts['reports'] = (int)db_val("SELECT COUNT(*) FROM document_reports WHERE status = 'new'");
         $badgeCounts['reviews'] = (int)db_val("SELECT COUNT(*) FROM document_reviews WHERE status = 'pending'");
+        $badgeCounts['comments'] = (int)db_val("SELECT COUNT(*) FROM blog_comments WHERE status = 'pending'");
+        $badgeCounts['pending_posts'] = (int)db_val("SELECT COUNT(*) FROM blog_posts WHERE status = 'pending'");
         foreach ((json_decode((string)setting('jobs_state'), true) ?: []) as $js) { if (empty($js['ok'])) { $badgeCounts['jobs']++; } }
     } catch (Throwable $e) { }
 }
@@ -24,6 +26,11 @@ $nav = [
         ['documents', 'Documents', 'documents.php', 'documents.view', 0], ['upload', 'Upload Document', 'upload.php', 'documents.edit', 0],
         ['categories', 'Categories', 'categories.php', 'categories.manage', 0], ['metadata', 'Metadata Fields', 'metadata.php', 'metadata.manage', 0],
         ['collections', 'Collections', 'collections.php', 'collections.manage', 0], ['homepage', 'Homepage', 'homepage.php', 'homepage.manage', 0], ['topbar', 'Top Bar', 'topbar.php', 'homepage.manage', 0],
+    ],
+    'BLOG' => [
+        ['posts', 'All Articles', 'posts.php', 'blog.write', $badgeCounts['pending_posts']], ['post-new', 'Add New Article', 'post-edit.php', 'blog.write', 0],
+        ['blog-taxonomy', 'Categories & Tags', 'blog-taxonomy.php', 'blog.publish', 0], ['blog-comments', 'Comments', 'blog-comments.php', 'blog.comments', $badgeCounts['comments']],
+        ['media', 'Media Library', 'media.php', 'blog.write', 0], ['blog-settings', 'Blog Settings', 'blog-settings.php', 'settings.manage', 0],
     ],
     'COMMUNITY' => [
         ['contributions', 'Contributions', 'contributions.php', 'contributions.review', $badgeCounts['contrib']],

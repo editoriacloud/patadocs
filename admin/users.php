@@ -6,6 +6,7 @@ $isSuper = $admin['role'] === 'SUPER_ADMIN';
 $roles = ['SUPER_ADMIN' => 'Super Admin — everything', 'ADMIN' => 'Admin — most management', 'CONTENT_MANAGER' => 'Content Manager — documents & categories', 'REVIEWER' => 'Reviewer — contributions & reports'];
 $perms = ['dashboard.view' => 'View dashboard', 'documents.view' => 'View documents', 'documents.edit' => 'Create / edit / publish documents', 'documents.delete' => 'Delete documents',
     'categories.manage' => 'Manage categories', 'metadata.manage' => 'Manage metadata fields', 'collections.manage' => 'Manage collections', 'homepage.manage' => 'Manage homepage',
+    'blog.write' => 'Write blog posts (own drafts)', 'blog.publish' => 'Publish & edit all blog posts', 'blog.comments' => 'Moderate blog comments',
     'synonyms.manage' => 'Manage search synonyms', 'contributions.review' => 'Review contributions', 'reports.manage' => 'Manage document reports', 'requests.manage' => 'Manage requests & messages',
     'orders.view' => 'View orders', 'orders.manage' => 'Manage orders (recheck / refund)', 'payments.view' => 'View payments', 'downloads.manage' => 'Manage download links',
     'analytics.view' => 'View analytics', 'settings.manage' => 'Change general settings', 'settings.secure' => 'Change Payment Hub & security settings', 'users.manage' => 'Manage admin users'];

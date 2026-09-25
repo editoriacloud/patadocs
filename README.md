@@ -206,12 +206,38 @@ Google-cookie disclosures, contact, About text, enough substantial documents, Se
 Protection Act), Terms of Use, Cookie Policy, Copyright & Takedown, Disclaimer: default texts filled with your site name and contacts,
 editable, linked in every footer and listed in the sitemap.
 
+## 8f. Blog / articles
+**Admin → Blog** — a WordPress-style blog built into the site (`/blog/`), with articles as a second source of search traffic that links readers to documents.
+* **Editor:** TinyMCE 6 (bundled locally under `assets/js/vendor/tinymce`, MIT licence — no API key, no CDN): headings, lists, tables, colours,
+  alignment, links with an internal-link list (articles, popular documents, categories), images (upload / paste / drag-and-drop / media library,
+  captions, alt text), YouTube/Vimeo/Maps embeds, code blocks, accordions, emoji, callout boxes (info/tip/warning/danger), button links,
+  find & replace, source code, full screen, word count. The **📄 Document** button inserts a card for any document in the store (title, format,
+  price, GET IT button). Autosave every minute (plus browser-side recovery), unsaved-changes warning, Ctrl+S to save, **revisions** with
+  one-click restore, a live **Preview** of unsaved changes, drafts, **pending review** (writers), **scheduled** and **private** articles.
+* **SEO box (per article):** focus keyphrase (warns when another article already targets it), SEO title and meta description with counters,
+  a Google result preview, and a live 0–100 analysis: keyphrase in title/intro/URL/subheading/meta description/image alt, density, length,
+  subheadings, internal & outbound links, image alt texts, featured image, sentence and paragraph length. Also canonical URL, noindex,
+  article type (BlogPosting / Article / NewsArticle), table of contents on/off.
+* **What readers and search engines get:** fast pages with breadcrumbs, table of contents with jump links, reading time, author box and
+  author pages (bio, title and profile links from **My Account → Author profile** — E-E-A-T), tags, share buttons, related articles,
+  “Documents for this topic” (picked by hand or matched automatically), older/newer links and moderated comments (honeypot, timing and rate
+  limits; replies from the team; email alerts). JSON-LD **BlogPosting** (author, publisher, dates, image, word count, keywords, comment count),
+  **BreadcrumbList**, **Blog**, **CollectionPage** and **ProfilePage**; Open Graph `article:*` and Twitter cards; RSS feed at `/blog/feed`
+  (auto-discovered); `sitemap-posts.xml` with images; IndexNow ping on publish/update; renamed articles 301 from their old URL; tag pages
+  and blog search stay `noindex` (optional for tags with 2+ articles); scheduled posts appear by themselves at their time.
+* **Media Library:** uploads are re-encoded (metadata stripped), scaled to ≤ 1600 px, with a 640 px copy for lists; alt text editable;
+  used images are protected from accidental deletion. Article HTML is always cleaned server-side (whitelist of tags, attributes, styles
+  and embed hosts) whoever wrote it.
+* **Ad spaces:** “Article — inside the text” (after paragraph N, only in long articles), “Article — after the text” and “Blog lists” —
+  managed in Ads & Google like the others. Permissions: `blog.write` (own drafts, submit for review), `blog.publish`, `blog.comments`.
+
 ## 9. Nginx
 ```nginx
 location / { try_files $uri $uri/ /router.php?path=$uri&$args; }          # clean URLs
 location = /sitemap.xml { rewrite ^ /sitemap.php last; }
 location = /robots.txt  { rewrite ^ /robots.php last; }
 location = /ads.txt     { rewrite ^ /adstxt.php last; }
+location ~ ^/blog(/(.*))?$ { rewrite ^/blog/?(.*)$ /blog.php?route=$1 last; }
 location ~ ^/sitemap-([a-z]+)(-([0-9]+))?\.xml$ { rewrite ^ /sitemap.php?part=$1&n=$3 last; }
 location ~ ^/([a-f0-9]{32})\.txt$ { rewrite ^ /indexnow.php?key=$1 last; }
 location ~ ^/(private_documents|includes|uploads/temporary)/ { deny all; }

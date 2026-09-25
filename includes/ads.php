@@ -22,6 +22,9 @@ function ad_slots(): array
         'category_list'   => ['Category — after the document list', 'Category pages, below the list and pager.', 250],
         'search_results'  => ['Search — after the results', 'Search / browse results, below the list (only when there are results).', 250],
         'collection_list' => ['Collection — after the document list', 'Bundle pages, below the included documents.', 250],
+        'blog_in_article' => ['Article — inside the text', 'Blog articles, after paragraph N (Blog settings) — only in long articles.', 280],
+        'blog_after'      => ['Article — after the text', 'Blog articles, below the author box (before related documents).', 280],
+        'blog_list'       => ['Blog lists — after the list', 'Blog home, category, tag and author pages, below the articles.', 250],
         'list_pages'      => ['Popular / Categories — after the list', 'Popular and All categories pages.', 250],
         'footer'          => ['Above the footer', 'Every eligible page, above the footer links.', 120],
     ];

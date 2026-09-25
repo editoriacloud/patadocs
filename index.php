@@ -115,6 +115,17 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php } ?>
 
+    <?php $homePosts = (blog_enabled() && setting('blog_on_home', '1') === '1') ? blog_posts(blog_live_sql() . ' AND p.robots_noindex = 0', [], max(1, min(9, (int)setting('blog_home_count', '3')))) : [];
+    if ($homePosts) { ?>
+    <div class="panel">
+        <div class="panel-header">LATEST FROM THE <?= e(strtoupper(setting('blog_title', 'Blog'))) ?></div>
+        <div class="panel-body">
+            <div class="blog-grid blog-grid-3"><?php foreach ($homePosts as $p) { echo blog_card_html($p); } ?></div>
+            <p style="text-align:right; margin:10px 0 0;"><a class="btn-classic btn-sm" href="<?= e(blog_url()) ?>">ALL ARTICLES →</a></p>
+        </div>
+    </div>
+    <?php } ?>
+
     <?php if (setting('home_show_features', '1') === '1') { ?>
     <div class="panel">
         <div class="panel-header">WHY CHOOSE <?= e(strtoupper(setting('site_name', 'PATADOCS'))) ?></div>

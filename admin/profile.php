@@ -3,6 +3,14 @@
 require __DIR__ . '/../includes/init.php';
 $admin = require_admin();
 $acct = db_row('SELECT * FROM admin_users WHERE id = ?', [$admin['id']]);
+if (is_post() && post_str('do', 10) === 'author') {                // public author profile (blog) — no password needed
+    csrf_check();
+    $links = implode("\n", array_slice(array_filter(array_map('trim', preg_split('/\s+/', (string)($_POST['author_links'] ?? ''))), function ($u) { return (bool)filter_var($u, FILTER_VALIDATE_URL) && preg_match('#^https?://#i', $u); }), 0, 8));
+    db_exec('UPDATE admin_users SET full_name = ?, author_title = ?, bio = ?, author_links = ? WHERE id = ?', [post_str('full_name', 120) ?: $acct['full_name'], post_str('author_title', 120) ?: null, mb_substr(trim((string)($_POST['bio'] ?? '')), 0, 1500) ?: null, $links ?: null, $acct['id']]);
+    $_SESSION['admin']['name'] = post_str('full_name', 120) ?: $_SESSION['admin']['name'];
+    log_admin('author_profile', 'admin', $acct['id']); flash('success', 'Author profile saved.');
+    redirect(url('admin/profile.php'));
+}
 if (is_post()) {
     csrf_check();
     $errors = []; $name = post_str('full_name', 120); $email = post_str('email', 190); $cur = (string)($_POST['current'] ?? ''); $new = (string)($_POST['password'] ?? '');
@@ -35,6 +43,17 @@ include __DIR__ . '/../includes/admin_header.php';
             <div class="frow full"><label>Current password (required to save)</label><input type="password" name="current" required autocomplete="current-password" style="max-width:340px;"></div>
         </div>
         <div class="form-actions"><button class="btn-classic success" type="submit">💾 SAVE</button></div>
+    </form>
+    <div class="section-title" id="author">AUTHOR PROFILE (SHOWN ON BLOG ARTICLES)</div>
+    <p class="help">Google rewards content from real, identifiable people (E-E-A-T). This appears in the author box under your articles, on your author page<?= admin_can('blog.write') ? ' (<a href="' . e(blog_author_url($acct)) . '" target="_blank" rel="noopener">view</a>)' : '' ?> and in the article's structured data.</p>
+    <form method="post" class="pd-form"><?= csrf_field() ?><input type="hidden" name="do" value="author">
+        <div class="form-grid">
+            <div class="frow"><label>Display name</label><input type="text" name="full_name" maxlength="120" value="<?= e($acct['full_name']) ?>"></div>
+            <div class="frow"><label>Title / expertise</label><input type="text" name="author_title" maxlength="120" value="<?= e((string)($acct['author_title'] ?? '')) ?>" placeholder="e.g. CBC teacher, 12 years experience"></div>
+            <div class="frow full"><label>Short bio</label><textarea name="bio" maxlength="1500" style="min-height:80px;"><?= e((string)($acct['bio'] ?? '')) ?></textarea></div>
+            <div class="frow full"><label>Profile links (one per line: LinkedIn, X, Facebook, website)</label><textarea name="author_links" style="min-height:60px;"><?= e((string)($acct['author_links'] ?? '')) ?></textarea></div>
+        </div>
+        <div class="form-actions"><button class="btn-classic success" type="submit">💾 SAVE AUTHOR PROFILE</button></div>
     </form>
     <div class="section-title">MY LOGIN ACTIVITY</div>
     <div class="gv-wrap"><table class="gv-table compact"><thead><tr><th>When</th><th>Result</th><th>IP</th><th>Browser</th></tr></thead><tbody>

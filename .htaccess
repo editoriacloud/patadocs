@@ -32,6 +32,9 @@ RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
+# --- Blog: /blog/, /blog/<post>, /blog/category/<slug>, /blog/tag/<slug>, /blog/author/<user>, /blog/feed ---
+RewriteRule ^blog(?:/(.*))?$ blog.php?route=$1 [L,QSA]
+
 # --- Top level pages: /search /about /contribute ... ---
 RewriteRule ^(search|categories|popular|contribute|request-document|about|contact|recover|saved|payment|payment-success|download|privacy-policy|terms|cookie-policy|copyright|disclaimer)/?$ $1.php [L,QSA]
 
