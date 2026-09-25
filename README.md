@@ -146,6 +146,25 @@ one review per document per order. Reviews wait in **Admin → Reviews** (or pub
 the document page and as star ratings in Google.
 Database changes are applied automatically: `includes/migrate.php` upgrades existing installs on the first request after new code is uploaded.
 
+## 8c. Automation engine
+PATADOCS runs its own background jobs — **Admin → Automation** shows each job, its last result, a *Run now* button, switches and the run log.
+
+| Job | Every | What it does |
+|---|---|---|
+| Payment reconciliation | 5 min | Re-checks unpaid (and recently expired) orders with the Payment Hub, so a payment whose webhook got lost still unlocks the download; expires abandoned orders. |
+| Document text extraction | 15 min | Reads the text inside PDFs (`pdftotext`), Word `.docx` (built in), `.doc` (`antiword`) and images (`tesseract` OCR) — used for **full-text search** and the “From inside the document” text on the page. |
+| Auto-SEO | 1 h | Fills **empty** meta descriptions (from the document's own first lines) and keywords; never overwrites what an admin typed. Changed pages go to IndexNow. |
+| Preview generation | 1 h | Builds missing watermarked previews for published documents. |
+| Review requests | 1 h | Emails buyers (who gave an email) 2 days after purchase with a one-click rating link. |
+| Search vocabulary | 12 h | Learns the words in titles, tags, categories and documents → search fixes typos (“mathmatics” → *Showing results for mathematics*; “Did you mean…”). |
+| Daily report | 1 day | Emails the admin yesterday's sales, best sellers, top searches, **searches with no results** (documents people want) and pending work. |
+| Housekeeping | 1 day | Cleans rate limits, old logs and temp files; expires old download links. |
+
+**How it runs:** add a server cron (cPanel → Cron Jobs, every 5 minutes): `php /home/USER/public_html/patadocs/cron.php` — or, URL-only hosts:
+`wget -q -O /dev/null "https://YOUR-DOMAIN/cron.php?key=CRON_KEY"` (key on the Automation page). Without cron, the built-in **web cron** runs due jobs
+after a visitor's page has been sent (no delay for the visitor). A database lock prevents overlapping runs; each run has a time budget.
+Run one job by hand: `php cron.php seo`. A failing job shows a red badge in the admin menu and in the daily report.
+
 ## 9. Nginx
 ```nginx
 location / { try_files $uri $uri/ /router.php?path=$uri&$args; }          # clean URLs

@@ -275,6 +275,17 @@ function search_zone_html(array $o, array $res): string
     if ($q === '' && $total === 0) { $msg = 'No documents match these filters.'; }
     elseif ($total === 0) { $msg = 'No documents found for "' . $q . '".'; }
     else { $msg = ''; }
+    $sp = function ($query, $extra = []) use ($o) {        // same filters, another query
+        $p = array_filter(['q' => $query, 'cat' => $o['cat'] ?? 0, 'format' => $o['format'] ?? '', 'price' => $o['price'] ?? '', 'sort' => $o['sort'] ?? '', 'tag' => $o['tag'] ?? ''] + $extra);
+        return page_url('search', http_build_query($p));
+    };
+    if (!empty($res['corrected'])) {
+        $h .= '<div class="alert alert-info spell-note">Showing results for <a href="' . e($sp($res['corrected'])) . '"><strong><em>' . e($res['corrected']) . '</em></strong></a>. '
+            . 'Search instead for <a href="' . e($sp($res['original'], ['exact' => '1'])) . '">' . e($res['original']) . '</a>.</div>';
+        $q = $res['corrected'];
+    } elseif (!empty($res['suggest'])) {
+        $h .= '<div class="alert alert-info spell-note">Did you mean: <a href="' . e($sp($res['suggest'])) . '"><strong><em>' . e($res['suggest']) . '</em></strong></a>?</div>';
+    }
     $h .= '<div class="result-count">';
     if ($total > 0) {
         $h .= '<strong>' . num($total) . '</strong> document' . ($total === 1 ? '' : 's') . ' found' . ($q !== '' ? ' for "<em>' . e($q) . '</em>"' : '');
@@ -288,6 +299,7 @@ function search_zone_html(array $o, array $res): string
     }
     $params = [];
     foreach (['q', 'cat', 'format', 'price', 'min', 'max', 'sort', 'tag'] as $k) { if (isset($o[$k]) && $o[$k] !== '' && $o[$k] !== 0) { $params[$k] = $o[$k]; } }
+    if (!empty($res['corrected'])) { $params['q'] = $res['corrected']; } elseif (!empty($o['exact'])) { $params['exact'] = '1'; }
     foreach (($o['filters'] ?? []) as $k => $v) { if ($v !== '') { $params['f'][$k] = $v; } }
     $h .= pager_html($res['pg'], page_url('search'), $params);
     return $h;
@@ -308,7 +320,7 @@ function search_options_from(array $src): array
         'min' => is_numeric($src['min'] ?? '') ? (string)(0 + $src['min']) : '', 'max' => is_numeric($src['max'] ?? '') ? (string)(0 + $src['max']) : '',
         'sort' => in_array(input_str($src, 'sort', 12), ['new', 'popular', 'price_asc', 'price_desc', 'title'], true) ? input_str($src, 'sort', 12) : '',
         'tag' => preg_match('/^[a-z0-9\-]{1,100}$/', input_str($src, 'tag', 100)) ? input_str($src, 'tag', 100) : '',
-        'filters' => $filters, 'page' => max(1, input_int($src, 'page', 1)), 'per' => 15,
+        'filters' => $filters, 'page' => max(1, input_int($src, 'page', 1)), 'per' => 15, 'exact' => input_str($src, 'exact', 1) === '1',
     ];
 }
 

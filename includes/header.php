@@ -21,6 +21,8 @@ if (setting('show_admin_link', '1') === '1') { $menu[] = ['admin', 'Admin Panel'
 $favicon = setting('site_favicon') ? url(setting('site_favicon')) : asset('images/favicon.svg');
 // Same directive as the <meta name="robots"> tag, as an HTTP header (the only one crawlers honour for non-HTML fetches and redirects).
 if (!headers_sent() && strpos(seo_robots($meta), 'noindex') !== false) { header('X-Robots-Tag: ' . seo_robots($meta)); }
+// Automation "web cron": at most one cheap check per minute; due jobs run after this page has been sent.
+if (setting('jobs_webcron', '1') === '1' && time() - (int)setting('jobs_last_tick', 0) >= 60) { require_once __DIR__ . '/jobs.php'; jobs_web_tick(); }
 ?>
 <!DOCTYPE html>
 <html lang="en-KE">

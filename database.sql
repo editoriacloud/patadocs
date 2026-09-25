@@ -156,6 +156,8 @@ CREATE TABLE IF NOT EXISTS documents (
   meta_description VARCHAR(320) NULL,
   seo_keywords     VARCHAR(400) NULL,
   search_text      MEDIUMTEXT NULL,
+  content_text     MEDIUMTEXT NULL,
+  content_status   ENUM('none','ok','empty','unsupported','failed') NOT NULL DEFAULT 'none',
   source           ENUM('admin','community') NOT NULL DEFAULT 'admin',
   contribution_id  INT UNSIGNED NULL,
   contributor_name VARCHAR(120) NULL,
@@ -295,6 +297,7 @@ CREATE TABLE IF NOT EXISTS orders (
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   expires_at    DATETIME NULL,
   paid_at       DATETIME NULL,
+  review_asked_at DATETIME NULL,
   updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_order_code (order_code),
@@ -592,4 +595,29 @@ CREATE TABLE IF NOT EXISTS document_reviews (
   CONSTRAINT fk_review_order FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '2') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+-- ----------------------------------------------------------------------------
+-- AUTOMATION ENGINE — schema version 3
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS job_runs (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  job         VARCHAR(40) NOT NULL,
+  trigger_by  ENUM('cron','web','admin') NOT NULL DEFAULT 'cron',
+  status      ENUM('ok','error') NOT NULL DEFAULT 'ok',
+  message     VARCHAR(500) NULL,
+  duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_job_runs (job, created_at),
+  KEY idx_job_runs_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS search_vocab (
+  word  VARCHAR(60) NOT NULL,
+  freq  INT UNSIGNED NOT NULL DEFAULT 1,
+  len   TINYINT UNSIGNED NOT NULL,
+  first CHAR(1) NOT NULL,
+  PRIMARY KEY (word),
+  KEY idx_vocab_lookup (first, len)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '3') ON DUPLICATE KEY UPDATE setting_value = setting_value;

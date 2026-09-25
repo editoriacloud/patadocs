@@ -155,6 +155,10 @@ include __DIR__ . '/includes/header.php';
         <div class="panel-header">ABOUT THIS DOCUMENT</div>
         <div class="panel-body">
             <?php if (trim((string)$doc['description']) !== '') { echo '<div class="desc-text">' . nl2br(e($doc['description'])) . '</div>'; } ?>
+            <?php if (($inside = doc_content_excerpt($doc, (int)setting('content_excerpt_words', 80))) !== '') { ?>
+                <div class="section-title">📖 FROM INSIDE THE DOCUMENT</div>
+                <blockquote class="doc-excerpt"><?= e($inside) ?></blockquote>
+            <?php } ?>
             <?php if ((int)$doc['show_contributor'] === 1 && $doc['contributor_name']) { ?>
                 <div class="contrib-note">🤝 Contributed by: <strong><?= e($doc['contributor_name']) ?></strong>
                     <?php if ($doc['contributor_badge'] === 'verified') { echo ' <span class="badge attribution">✔ Verified Contributor</span>'; } elseif ($doc['contributor_badge'] === 'community') { echo ' <span class="badge attribution">Community Contributor</span>'; } ?>

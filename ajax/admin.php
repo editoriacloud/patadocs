@@ -85,6 +85,18 @@ switch ($action) {
             if (($d = doc_get((int)$rv['document_id'])) && $d['status'] === 'published') { indexnow_doc($d); }
         }
         log_admin('review_' . $val, 'review', $id); $ok($val === 'delete' ? 'Review deleted.' : 'Review ' . $val . '.');
+    case 'job_run':
+        require_admin('settings.secure');
+        require_once __DIR__ . '/../includes/jobs.php';
+        if (!isset(jobs_registry()[$val])) { $fail('Unknown job.'); }
+        $r = jobs_run('admin', $val, 55);
+        if (isset($r['_locked'])) { $fail('Another automation run is in progress — try again in a minute.'); }
+        log_admin('job_run', 'job', null, $val);
+        $r[$val]['ok'] ? $ok($r[$val]['message']) : $fail('The job failed: ' . $r[$val]['message']);
+    case 'content_reread':
+        require_admin('settings.secure');
+        $n = db_exec("UPDATE documents SET content_status = 'none', updated_at = updated_at WHERE content_status <> 'none'");
+        log_admin('content_reread', 'job'); $ok($n . ' document(s) will be read again by the next “Document text extraction” runs.');
     case 'request_status':
         require_admin('requests.manage');
         if (!in_array($val, ['new', 'reviewing', 'found', 'created', 'rejected'], true)) { $fail('Invalid status.'); }

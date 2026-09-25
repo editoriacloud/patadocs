@@ -175,7 +175,7 @@ function doc_save(array $post, array $files, int $id, string $intent): array
         if ($stored) {                                     // replaced file → remove old original, previews are now stale
             if (!empty($old['file_name'])) { doc_remove_files(array_merge($old, ['preview_dir' => null])); }
             preview_delete_dir($old['preview_dir']);
-            db_exec("UPDATE documents SET preview_status = 'none', preview_dir = NULL, preview_pages = 0 WHERE id = ?", [$id]);
+            db_exec("UPDATE documents SET preview_status = 'none', preview_dir = NULL, preview_pages = 0, content_text = NULL, content_status = 'none' WHERE id = ?", [$id]);   // new file: re-read its text too
             $notes[] = 'File replaced — the preview was reset.';
         }
         log_admin('document_updated', 'document', $id, $title);

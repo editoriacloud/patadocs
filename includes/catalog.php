@@ -186,6 +186,27 @@ function tags_save(int $docId, string $csv): void
 }
 
 /** Denormalised text used by the search (title + categories + tags + searchable metadata + description). */
+/** First ~$words words of a document's text, as one clean paragraph (for the page and meta descriptions). */
+function doc_content_excerpt(array $d, int $words = 80): string
+{
+    if (($d['content_status'] ?? '') !== 'ok' || $words <= 0) { return ''; }
+    // Join the file's lines: a short line followed by a capitalised one is a heading (ends a sentence);
+    // anything else is a wrapped line of the same paragraph (PDF text wraps mid-sentence).
+    $t = ''; $prev = '';
+    foreach (preg_split('/\n+/u', trim((string)$d['content_text'])) as $line) {
+        $line = trim(preg_replace('/\s+/u', ' ', $line));
+        if ($line === '') { continue; }
+        if ($t !== '') {
+            $heading = mb_strlen($prev) < 70 && preg_match('/[\p{L}\p{N}]$/u', $prev) && preg_match('/^\p{Lu}/u', $line);
+            $t .= $heading ? '. ' : ' ';
+        }
+        $t .= $line; $prev = $line;
+    }
+    $parts = preg_split('/\s+/u', $t, $words + 1);
+    if (count($parts) > $words) { array_pop($parts); return rtrim(implode(' ', $parts), ' ,.;:-') . '…'; }
+    return $t;
+}
+
 function doc_rebuild_search(int $docId): void
 {
     $d = doc_get($docId);
@@ -195,6 +216,7 @@ function doc_rebuild_search(int $docId): void
     foreach (tags_get($docId) as $t) { $parts[] = $t['name']; }
     foreach (db_all('SELECT m.meta_value FROM document_meta m JOIN metadata_fields f ON f.id = m.field_id WHERE m.document_id = ? AND f.is_searchable = 1', [$docId]) as $r) { $parts[] = str_replace('|', ' ', $r['meta_value']); }
     $parts[] = mb_substr(strip_tags((string)$d['description']), 0, 600);
+    if (($d['content_status'] ?? '') === 'ok') { $parts[] = mb_substr((string)$d['content_text'], 0, 4000); }   // words inside the file (automation → text extraction)
     $text = trim(preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, function ($x) { return $x !== null && (string)$x !== ''; }))));
     db_exec('UPDATE documents SET search_text = ?, updated_at = updated_at WHERE id = ?', [$text, $docId]);
 }
@@ -330,6 +352,31 @@ function search_order(string $sort, bool $hasQuery): string
  * Main search. $o keys: q, cat, format(pdf|word|image), price(free|paid), min, max, tag, filters[key=>value],
  * sort, page, per. Returns rows + pagination + strict_total (exact matches) + relaxed flag.
  */
+/**
+ * Spelling correction from the learned vocabulary (Automation → Search vocabulary): each unknown word of 4+ letters is
+ * replaced by the most frequent known word within 1 edit (2 for words of 8+ letters) that starts with the same letter.
+ * Returns the corrected query, or '' when nothing needed fixing.
+ */
+function search_spell(string $q): string
+{
+    $words = ($n = search_norm($q)) === '' ? [] : explode(' ', $n);
+    if (!$words || count($words) > 8) { return ''; }
+    $syn = syn_map(); $changed = false; $out = [];
+    try {
+        foreach ($words as $w) {
+            $len = mb_strlen($w);
+            if ($len < 4 || $len > 40 || !preg_match('/^\p{L}+$/u', $w) || isset($syn[$w]) || db_val('SELECT 1 FROM search_vocab WHERE word = ?', [$w])) { $out[] = $w; continue; }
+            $max = $len >= 8 ? 2 : 1; $best = null; $bestD = 99; $bestF = -1;
+            foreach (db_all('SELECT word, freq FROM search_vocab WHERE first = ? AND len BETWEEN ? AND ? ORDER BY freq DESC LIMIT 3000', [mb_substr($w, 0, 1), $len - $max, $len + $max]) as $r) {
+                $d = levenshtein($w, $r['word']);
+                if ($d <= $max && ($d < $bestD || ($d === $bestD && (int)$r['freq'] > $bestF))) { $best = $r['word']; $bestD = $d; $bestF = (int)$r['freq']; }
+            }
+            if ($best !== null) { $out[] = $best; $changed = true; } else { $out[] = $w; }
+        }
+    } catch (Throwable $e) { return ''; }                   // vocabulary table not created yet
+    return $changed ? implode(' ', $out) : '';
+}
+
 function search_documents(array $o): array
 {
     $q = trim((string)($o['q'] ?? ''));
@@ -349,7 +396,19 @@ function search_documents(array $o): array
          . ' ORDER BY ' . search_order((string)($o['sort'] ?? ''), $o['_groups'] !== [])
          . ' LIMIT ' . (int)$pg['offset'] . ', ' . (int)$per;
     $rows = $total ? db_all($sql, array_merge($b['sp'], $b['params'])) : [];
-    return ['rows' => $rows, 'total' => $total, 'strict_total' => $strict, 'relaxed' => $relaxed, 'pg' => $pg, 'build' => $b];
+    $res = ['rows' => $rows, 'total' => $total, 'strict_total' => $strict, 'relaxed' => $relaxed, 'pg' => $pg, 'build' => $b, 'corrected' => '', 'suggest' => ''];
+    // Spelling: nothing found → search the corrected words instead; weak results → offer "Did you mean…"
+    if ($q !== '' && empty($o['_nospell']) && empty($o['exact']) && ($strict === 0 || $total < 3)) {
+        $fix = search_spell($q);
+        if ($fix !== '') {
+            $alt = search_documents(array_merge($o, ['q' => $fix, '_nospell' => true]));
+            if ($strict === 0 && $alt['total'] > 0 && ($total === 0 || $alt['strict_total'] > 0)) {
+                return array_merge($alt, ['corrected' => $fix, 'original' => $q]);   // strict_total of the fix: a typo is not "missing content"
+            }
+            if ($alt['total'] > $total) { $res['suggest'] = $fix; }
+        }
+    }
+    return $res;
 }
 
 /** The category most of the current results live in (used to pick which dynamic filters to show). */
