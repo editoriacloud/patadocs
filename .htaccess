@@ -1,0 +1,59 @@
+# ==========================================================================
+# PATADOCS — Apache configuration (cPanel / XAMPP / shared hosting)
+# Requires mod_rewrite for clean URLs. Without it, set Admin → Settings →
+# "Clean URLs" to OFF and the site uses document.php?slug=... style links.
+# ==========================================================================
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+
+<IfModule mod_rewrite.c>
+RewriteEngine On
+
+# --- Force HTTPS (uncomment once your SSL certificate is active) ---
+# RewriteCond %{HTTPS} !=on
+# RewriteCond %{HTTP:X-Forwarded-Proto} !https
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# --- Never expose these folders / files ---
+RewriteRule ^(private_documents|includes)(/|$) - [F,L]
+RewriteRule ^uploads/temporary(/|$) - [F,L]
+RewriteRule \.(sql|md|log|ini|bak|sh|inc)$ - [F,L]
+
+# --- Real files and folders are served as they are ---
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# --- Dynamic sitemap ---
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+
+# --- Top level pages: /search /about /contribute ... ---
+RewriteRule ^(search|categories|popular|contribute|request-document|about|contact|recover|saved|payment|payment-success|download)/?$ $1.php [L,QSA]
+
+# --- Everything else → router (categories, documents, collections) ---
+RewriteRule ^(.+)$ router.php?path=$1 [L,QSA]
+</IfModule>
+
+# --- Sensitive files can never be downloaded ---
+<FilesMatch "\.(sql|md|log|ini|bak|sh|inc)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order deny,allow
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# --- Performance: compression + browser caching (assets are versioned with ?v=) ---
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json application/xml image/svg+xml
+</IfModule>
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 year"
+    ExpiresByType application/javascript "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/png "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+</IfModule>

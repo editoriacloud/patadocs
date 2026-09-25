@@ -1,0 +1,13 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /ajax/
+Disallow: /includes/
+Disallow: /private_documents/
+Disallow: /uploads/temporary/
+Disallow: /download.php
+Disallow: /payment.php
+Disallow: /payment-success.php
+Disallow: /recover.php
+Disallow: /install.php
+
+Sitemap: https://knickpoint.co.ke/patadocs/sitemap.xml

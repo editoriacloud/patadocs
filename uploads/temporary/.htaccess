@@ -1,0 +1,10 @@
+# ORIGINAL DOCUMENTS — never directly reachable from the web.
+# Files here are only delivered through download.php (secure, time-limited tokens).
+Options -Indexes
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order deny,allow
+    Deny from all
+</IfModule>
