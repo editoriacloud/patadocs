@@ -1,0 +1,12 @@
+includes/config.php
+private_documents/*
+!private_documents/.htaccess
+!private_documents/index.html
+uploads/previews/*
+!uploads/previews/index.html
+uploads/temporary/*
+!uploads/temporary/.htaccess
+uploads/branding/
+uploads/categories/
+uploads/collections/
+*.log
