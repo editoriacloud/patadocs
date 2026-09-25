@@ -8,16 +8,19 @@ $meta = (isset($meta) && is_array($meta)) ? $meta : [];
 $navKey = $meta['nav'] ?? '';
 $siteName = setting('site_name', 'PATADOCS');
 $brand = preg_match('/^(.+?)(docs)$/i', $siteName, $bm) ? e($bm[1]) . '<span>' . e($bm[2]) . '</span>' : e($siteName);
+// [key, label, url, priority]: when the bar is too narrow, the highest priority numbers move into "More" first
 $menu = [
-    ['home', 'Home', url('')],
-    ['browse', 'Browse Documents', page_url('search')],
-    ['categories', 'Categories', page_url('categories')],
-    ['popular', 'Popular', page_url('popular')],
-    ['contribute', 'Contribute', page_url('contribute')],
-    ['request', 'Request Document', page_url('request-document')],
-    ['about', 'About', page_url('about')],
+    ['home', 'Home', url(''), 1],
+    ['browse', 'Browse Documents', page_url('search'), 1],
+    ['categories', 'Categories', page_url('categories'), 2],
+    ['popular', 'Popular', page_url('popular'), 3],
+    ['contribute', 'Contribute', page_url('contribute'), 5],
+    ['request', 'Request Document', page_url('request-document'), 4],
+    ['about', 'About', page_url('about'), 6],
 ];
-if (setting('show_admin_link', '1') === '1') { $menu[] = ['admin', 'Admin Panel', url('admin/')]; }
+if (setting('show_admin_link', '1') === '1') { $menu[] = ['admin', 'Admin Panel', url('admin/'), 9]; }
+require_once __DIR__ . '/topbar.php';
+$topbar = topbar_config();
 $favicon = setting('site_favicon') ? url(setting('site_favicon')) : asset('images/favicon.svg');
 // Same directive as the <meta name="robots"> tag, as an HTTP header (the only one crawlers honour for non-HTML fetches and redirects).
 if (!headers_sent() && strpos(seo_robots($meta), 'noindex') !== false) { header('X-Robots-Tag: ' . seo_robots($meta)); }
@@ -39,8 +42,9 @@ if (setting('jobs_webcron', '1') === '1' && time() - (int)setting('jobs_last_tic
 <?= $meta['head_extra'] ?? '' ?>
 </head>
 <body class="light-theme">
-<script>try{if(localStorage.getItem('patadocs-theme')==='dark'){document.body.className='dark-theme';}}catch(e){}</script>
+<script>document.documentElement.className+=' js';try{if(localStorage.getItem('patadocs-theme')==='dark'){document.body.className='dark-theme';}}catch(e){}</script>
 <div class="aspx-form" id="form1">
+<?= topbar_visible($topbar, $navKey) ? topbar_html($topbar) : '' ?>
 
 <!-- ===== TOP BAR ===== -->
 <div class="aspx-toolbar">
@@ -49,11 +53,12 @@ if (setting('jobs_webcron', '1') === '1' && time() - (int)setting('jobs_last_tic
         <?= $brand ?>
     </a>
     <button type="button" class="hamburger" id="hamburgerBtn" aria-label="Toggle menu">☰</button>
-    <div class="aspx-menu" id="mobileMenu">
-        <ul>
-            <?php foreach ($menu as $m) { echo '<li><a href="' . e($m[2]) . '" class="nav-link' . ($navKey === $m[0] ? ' active' : '') . '">' . e($m[1]) . '</a></li>'; } ?>
+    <nav class="aspx-menu" id="mobileMenu" aria-label="Main">
+        <ul id="mainNav">
+            <?php foreach ($menu as $m) { echo '<li data-prio="' . (int)$m[3] . '"><a href="' . e($m[2]) . '" class="nav-link' . ($navKey === $m[0] ? ' active" aria-current="page' : '') . '">' . e($m[1]) . '</a></li>'; } ?>
+            <li class="nav-more" hidden><button type="button" class="nav-more-btn" aria-expanded="false" aria-controls="navMoreList">More <span aria-hidden="true">▾</span></button><ul class="nav-more-list" id="navMoreList"></ul></li>
         </ul>
-    </div>
+    </nav>
     <div class="toolbar-right">
         <a class="theme-toggle" href="<?= e(page_url('saved')) ?>" id="savedLink" title="Saved documents">★ <span id="savedCount">0</span></a>
         <button type="button" class="theme-toggle" id="themeToggleBtn">🌙 DARK</button>

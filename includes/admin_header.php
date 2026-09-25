@@ -23,7 +23,7 @@ $nav = [
     'CONTENT' => [
         ['documents', 'Documents', 'documents.php', 'documents.view', 0], ['upload', 'Upload Document', 'upload.php', 'documents.edit', 0],
         ['categories', 'Categories', 'categories.php', 'categories.manage', 0], ['metadata', 'Metadata Fields', 'metadata.php', 'metadata.manage', 0],
-        ['collections', 'Collections', 'collections.php', 'collections.manage', 0], ['homepage', 'Homepage', 'homepage.php', 'homepage.manage', 0],
+        ['collections', 'Collections', 'collections.php', 'collections.manage', 0], ['homepage', 'Homepage', 'homepage.php', 'homepage.manage', 0], ['topbar', 'Top Bar', 'topbar.php', 'homepage.manage', 0],
     ],
     'COMMUNITY' => [
         ['contributions', 'Contributions', 'contributions.php', 'contributions.review', $badgeCounts['contrib']],

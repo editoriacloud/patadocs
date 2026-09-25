@@ -165,6 +165,15 @@ PATADOCS runs its own background jobs — **Admin → Automation** shows each jo
 after a visitor's page has been sent (no delay for the visitor). A database lock prevents overlapping runs; each run has a time budget.
 Run one job by hand: `php cron.php seo`. A failing job shows a red badge in the admin menu and in the daily report.
 
+## 8d. Top bar & navigation
+**Admin → Top Bar** manages the strip above the main menu: rotating announcements (one per line, `text | link`), phone / WhatsApp / email,
+up to 4 links, social icons (Facebook, X, Instagram, TikTok, YouTube, WhatsApp, Telegram), colours (with presets and a readability check),
+close button (visitors who close it see it again when the announcements change), every page or home only, and an optional start/end date.
+The preview on that page is the real server rendering of the unsaved form.
+
+The main menu always stays on one line: on narrower screens the less important links (About, Contribute, Request…, Admin Panel) move into a
+**More ▾** dropdown automatically; phones use the ☰ drawer. Order of importance is the 4th value of each entry in `$menu` (includes/header.php).
+
 ## 9. Nginx
 ```nginx
 location / { try_files $uri $uri/ /router.php?path=$uri&$args; }          # clean URLs
