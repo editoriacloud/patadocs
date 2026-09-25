@@ -175,6 +175,9 @@ function default_settings(): array
         'seo_default_title' => 'PATADOCS | Find the Document You Need',
         'seo_default_description' => "Kenya's document discovery, sharing and download hub. Search schemes of work, exams, CV templates, business plans and more. Preview, pay via M-Pesa and download instantly.",
         'seo_title_suffix' => ' | PATADOCS', 'canonical_urls' => '1', 'sitemap_enabled' => '1', 'og_image' => '', 'force_canonical_host' => '1', 'indexnow_enabled' => '1', 'reviews_auto_approve' => '0',
+        // Top bar (Admin → Top Bar)
+        'topbar_on' => '0', 'topbar_messages' => '', 'topbar_rotate' => '6', 'topbar_bg' => '#000040', 'topbar_fg' => '#ffffff', 'topbar_accent' => '#ffff66',
+        'topbar_dismiss' => '1', 'topbar_pages' => 'all', 'topbar_mobile_contacts' => '0',
         // Automation (Admin → Automation)
         'jobs_webcron' => '1', 'auto_seo' => '1', 'content_excerpt_words' => '80', 'reviews_ask' => '1', 'reviews_ask_days' => '2', 'digest_on' => '1', 'digest_email' => '',
         // Payment Hub

@@ -85,6 +85,13 @@ switch ($action) {
             if (($d = doc_get((int)$rv['document_id'])) && $d['status'] === 'published') { indexnow_doc($d); }
         }
         log_admin('review_' . $val, 'review', $id); $ok($val === 'delete' ? 'Review deleted.' : 'Review ' . $val . '.');
+    case 'topbar_preview':                                     // exact server rendering of unsaved settings (Admin → Top Bar)
+        require_admin('homepage.manage');
+        require_once __DIR__ . '/../includes/topbar.php';
+        $over = [];
+        foreach ($_POST as $k => $v) { if (is_string($k) && strpos($k, 'topbar_') === 0 && is_string($v)) { $over[$k] = mb_substr($v, 0, 3000); } }
+        foreach (['topbar_dismiss', 'topbar_mobile_contacts'] as $b) { $over[$b] = isset($_POST[$b]) ? '1' : '0'; }
+        $ok('Preview', ['html' => topbar_html(array_merge(topbar_config($over), ['on' => true]), true)]);
     case 'job_run':
         require_admin('settings.secure');
         require_once __DIR__ . '/../includes/jobs.php';
