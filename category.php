@@ -31,9 +31,10 @@ $items = [];
 foreach (array_slice($res['rows'], 0, 10) as $i => $d) { $items[] = ['@type' => 'ListItem', 'position' => $i + 1, 'url' => doc_url($d), 'name' => $d['title']]; }
 $meta = [
     'title' => (trim((string)$cat['seo_title']) !== '' ? $cat['seo_title'] : $cat['name'] . ' Documents') . ($res['pg']['page'] > 1 ? ' – Page ' . $res['pg']['page'] : ''),
-    'description' => $desc, 'nav' => 'categories',
+    'description' => ($res['pg']['page'] > 1 ? 'Page ' . $res['pg']['page'] . ' of ' . $res['pg']['pages'] . ': ' : '') . $desc, 'nav' => 'categories',
     'canonical' => cat_url($cat) . ($res['pg']['page'] > 1 ? (setting('clean_urls', '1') === '1' ? '?' : '&') . 'page=' . $res['pg']['page'] : ''),
     'robots' => ($total === 0 && !$children) ? 'noindex,follow' : 'index,follow',
+] + seo_pagination($res['pg'], cat_url($cat)) + [
     'schema' => [
         ['@context' => 'https://schema.org', '@type' => 'CollectionPage', 'name' => $cat['name'], 'description' => $desc, 'url' => cat_url($cat),
          'mainEntity' => ['@type' => 'ItemList', 'itemListElement' => $items]],

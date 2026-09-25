@@ -359,8 +359,8 @@ function order_finalize(int $orderId, array $hub, string $source): array
         db_exec("UPDATE payments SET status = 'success', mpesa_receipt = COALESCE(?, mpesa_receipt), hub_reference = COALESCE(hub_reference, NULLIF(?, '')), confirmed_at = NOW(),
                  result_desc = ?, webhook_status = IF(? = 'webhook', 'verified', webhook_status) WHERE order_id = ? ORDER BY id DESC LIMIT 1",
             [$receipt, $hub['invoice_id'], mb_substr($hub['message'] ?: 'Confirmed via ' . $source, 0, 250), $source, $orderId]);
-        if ($o['document_id']) { db_exec('UPDATE documents SET purchase_count = purchase_count + 1, revenue = revenue + ? WHERE id = ?', [$o['amount'], $o['document_id']]); }
-        elseif ($o['collection_id']) { db_exec('UPDATE documents SET purchase_count = purchase_count + 1 WHERE id IN (SELECT document_id FROM collection_documents WHERE collection_id = ?)', [$o['collection_id']]); }
+        if ($o['document_id']) { db_exec('UPDATE documents SET purchase_count = purchase_count + 1, revenue = revenue + ?, updated_at = updated_at WHERE id = ?', [$o['amount'], $o['document_id']]); }
+        elseif ($o['collection_id']) { db_exec('UPDATE documents SET purchase_count = purchase_count + 1, updated_at = updated_at WHERE id IN (SELECT document_id FROM collection_documents WHERE collection_id = ?)', [$o['collection_id']]); }
         $o = order_get($orderId);
         tokens_issue($o);
         $pdo->commit();

@@ -7,6 +7,7 @@ $col = $slug !== '' ? db_row("SELECT * FROM collections WHERE slug = ? AND statu
 if (!$col) { abort_page(404, 'Collection not found', 'This collection does not exist or is no longer available.', [['🔍 SEARCH', page_url('search')], ['🏠 HOME', url('')]]); }
 $docs = db_all("SELECT d.*, c.name AS category_name, c.path AS category_path FROM collection_documents cd JOIN documents d ON d.id = cd.document_id
                 LEFT JOIN categories c ON c.id = d.category_id WHERE cd.collection_id = ? AND d.status = 'published' ORDER BY cd.sort_order, d.title", [$col['id']]);
+if (!isset($GLOBALS['ROUTE_COLLECTION']) && setting('clean_urls', '1') === '1') { redirect(collection_url($col), 301); }
 $isFree = (int)$col['is_free'] === 1 || (float)$col['price'] <= 0;
 $sumIndividual = 0.0; foreach ($docs as $d) { if (!$d['is_free']) { $sumIndividual += (float)$d['price']; } }
 $canonical = collection_url($col);
@@ -19,6 +20,11 @@ $meta = [
     'schema' => [['@context' => 'https://schema.org', '@type' => 'CollectionPage', 'name' => $col['title'], 'description' => $desc, 'url' => $canonical, 'mainEntity' => ['@type' => 'ItemList', 'itemListElement' => $items]],
         breadcrumb_schema([['Home', url('')], [$col['title'], null]])],
 ];
+if ($docs) {
+    $meta['schema'][] = product_schema(['name' => $col['title'], 'description' => (string)$col['description'] !== '' ? $col['description'] : $desc, 'url' => $canonical,
+        'sku' => 'PD-C' . (int)$col['id'], 'images' => $col['cover_image'] ? [url($col['cover_image'])] : [], 'category' => 'Document bundle',
+        'price' => (float)$col['price'], 'free' => $isFree, 'props' => ['Documents in bundle' => count($docs)]]);
+}
 include __DIR__ . '/includes/header.php';
 ?>
 <section class="page-section active" id="page-collection">
@@ -43,7 +49,7 @@ include __DIR__ . '/includes/header.php';
                         <form method="post" action="<?= e(url('download.php')) ?>"><?= csrf_field() ?><input type="hidden" name="action" value="free"><input type="hidden" name="col" value="<?= (int)$col['id'] ?>">
                             <button type="submit" class="btn-classic success block"><span style="font-size:1.1rem;">⬇ DOWNLOAD ALL — FREE</span></button></form>
                     <?php } else { ?>
-                        <a class="btn-classic primary block" id="bundleBuyBtn" href="<?= e(url('payment.php?col=' . (int)$col['id'])) ?>" data-id="<?= (int)$col['id'] ?>" data-title="<?= e($col['title']) ?>" data-price="<?= e(money($col['price'])) ?>" data-docs="<?= count($docs) ?>"><span style="font-size:1.1rem;">💳 BUY BUNDLE &amp; DOWNLOAD</span></a>
+                        <a class="btn-classic primary block" id="bundleBuyBtn" rel="nofollow" href="<?= e(url('payment.php?col=' . (int)$col['id'])) ?>" data-id="<?= (int)$col['id'] ?>" data-title="<?= e($col['title']) ?>" data-price="<?= e(money($col['price'])) ?>" data-docs="<?= count($docs) ?>"><span style="font-size:1.1rem;">💳 BUY BUNDLE &amp; DOWNLOAD</span></a>
                     <?php } ?>
                     <?= share_links_html($canonical, $col['title']) ?>
                 </div>

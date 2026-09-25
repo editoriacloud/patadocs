@@ -25,7 +25,7 @@ The visual design is the supplied retro "classic Windows / WebForms" interface, 
 2. Upload the contents of this folder to `public_html/` (or a sub-folder) and extract.
 3. *(Recommended)* create a folder **above** `public_html`, e.g. `/home/USER/patadocs_private`, and enter it in the installer as *Private documents folder*. If you skip this, `private_documents/` inside the site is used — it is protected by `.htaccess` and only served through `download.php`.
 4. Open `https://YOUR-DOMAIN/install.php`, fill in the database + admin details, press **Install**.
-   The installer imports `database.sql`, writes `includes/config.php`, creates your Super Admin, updates `robots.txt` and deletes itself.
+   The installer imports `database.sql`, writes `includes/config.php`, creates your Super Admin and deletes itself.
 5. Sign in at `/admin/` → **Settings** → configure the **Payment Hub** (§4), logo, contact details.
 6. Once your SSL certificate is active, uncomment the HTTPS redirect at the top of `.htaccess`.
 
@@ -116,15 +116,43 @@ Wizard (9 steps): Upload → Basic info → Category → Metadata → Tags → P
 Categories: unlimited depth, moved/renamed safely (URLs and search text rebuilt). Metadata fields belong to a category and are inherited by all its sub-categories, so **nothing is hard-coded to Education**.
 
 ## 8. SEO
-Readable URLs (`/education/grade-7/mathematics/<slug>`), title/description/keywords/canonical/Open Graph per page, JSON-LD (`WebSite`, `WebPage`, `CollectionPage`, `BreadcrumbList`),
-dynamic `sitemap.xml` (published content only), `robots.txt`, suggestions for title/slug/description/keywords, thin category pages are `noindex`.
-After go-live: submit `https://YOUR-DOMAIN/sitemap.xml` in Google Search Console. If PATADOCS is in a **sub-folder**, prefix the paths in `robots.txt`.
+**On every page:** one canonical URL, `<title>` + meta description (≤160 chars, unique per page — paginated pages say "Page N of M"),
+`robots` with `max-snippet:-1, max-image-preview:large` for indexable pages, `X-Robots-Tag: noindex` headers on everything that must stay out
+of Google (admin, AJAX, payment, download, recover, search results, error pages), Open Graph + Twitter cards, `lang="en-KE"`, `rel=prev/next`.
+
+**Structured data (JSON-LD):** `WebSite` (+ search box) and `Organization` (logo, contact, Kenya) on the home page, `WebPage` + **`Product`/`Offer`**
+(price in KES, availability, preview images, format/pages) on document and bundle pages, **`AggregateRating` + `Review`** once verified-buyer reviews
+are approved, `CollectionPage`/`ItemList` on categories, `BreadcrumbList` everywhere. Test any page at https://search.google.com/test/rich-results.
+
+**Crawling:** `/sitemap.xml` is a sitemap index → `sitemap-pages.xml`, `sitemap-categories.xml`, `sitemap-collections.xml`, `sitemap-documents-N.xml`
+(5,000 per file, with preview images for Google Images). `<lastmod>` only changes when content really changes (views, downloads and purchases no longer
+touch `updated_at`). `/robots.txt` is generated with the right folder prefix. **IndexNow** tells Bing/Yandex/Seznam instantly when a document is
+published, edited, unpublished or deleted (key file `/<key>.txt`). The first preview image is in the HTML, so Google can see it.
+
+**URLs:** readable paths (`/education/grade-7/mathematics/<slug>`); non-canonical variants 301 to the canonical one (query-string URLs, wrong category
+prefix, `http://`, `www.` — set `BASE_URL` in `config.php`); removed (archived) documents answer **410 Gone** so they drop out of the index quickly.
+
+**Admin → Analytics & SEO → SEO health** audits every published document: title length (with the site suffix), meta description length, duplicate
+titles/descriptions, thin text (<50 words), missing preview or category — each with a FIX link — plus the technical checklist.
+
+After go-live: add the site to **Google Search Console** and **Bing Webmaster Tools** and submit `https://YOUR-DOMAIN/sitemap.xml`.
+If PATADOCS lives in a **sub-folder** (e.g. `/patadocs`), search engines ignore its robots.txt — copy the generated lines (shown on the SEO health page)
+into the domain's root `robots.txt`.
 No mod_rewrite? Turn off **Settings → SEO → Clean URLs**; the site then uses `document.php?slug=…` links.
+
+## 8b. Verified-buyer reviews
+After paying, the buyer can rate each document (1–5 stars + comment) on the payment-success page — the order's secret key proves the purchase,
+one review per document per order. Reviews wait in **Admin → Reviews** (or publish instantly: Settings → Documents → auto-approve) and then show on
+the document page and as star ratings in Google.
+Database changes are applied automatically: `includes/migrate.php` upgrades existing installs on the first request after new code is uploaded.
 
 ## 9. Nginx
 ```nginx
 location / { try_files $uri $uri/ /router.php?path=$uri&$args; }          # clean URLs
 location = /sitemap.xml { rewrite ^ /sitemap.php last; }
+location = /robots.txt  { rewrite ^ /robots.php last; }
+location ~ ^/sitemap-([a-z]+)(-([0-9]+))?\.xml$ { rewrite ^ /sitemap.php?part=$1&n=$3 last; }
+location ~ ^/([a-f0-9]{32})\.txt$ { rewrite ^ /indexnow.php?key=$1 last; }
 location ~ ^/(private_documents|includes|uploads/temporary)/ { deny all; }
 location ~* \.(sql|md|log|ini|bak|sh|inc)$ { deny all; }
 location ~ ^/uploads/.*\.php$ { deny all; }

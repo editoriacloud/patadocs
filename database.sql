@@ -569,3 +569,27 @@ INSERT IGNORE INTO search_synonyms (term, canonical) VALUES
 ('sst','social studies'),('cre','christian religious education'),('ire','islamic religious education'),
 ('ict','information and communication technology'),('kisw','kiswahili'),('sci','science'),('eng','english'),
 ('lesson plans','lesson plan'),('past papers','past paper'),('bizplan','business plan');
+
+-- ----------------------------------------------------------------------------
+-- REVIEWS (verified buyers only; moderated) — schema version 2
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS document_reviews (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  document_id INT UNSIGNED NOT NULL,
+  order_id    INT UNSIGNED NOT NULL,
+  rating      TINYINT UNSIGNED NOT NULL,
+  name        VARCHAR(80) NOT NULL,
+  comment     TEXT NULL,
+  status      ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+  ip          VARCHAR(45) NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_review_order_doc (order_id, document_id),
+  KEY idx_review_doc (document_id, status, created_at),
+  KEY idx_review_status (status, created_at),
+  CONSTRAINT fk_review_doc FOREIGN KEY (document_id) REFERENCES documents (id) ON DELETE CASCADE,
+  CONSTRAINT fk_review_order FOREIGN KEY (order_id) REFERENCES orders (id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '2') ON DUPLICATE KEY UPDATE setting_value = setting_value;

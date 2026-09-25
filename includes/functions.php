@@ -172,7 +172,7 @@ function default_settings(): array
         // SEO
         'seo_default_title' => 'PATADOCS | Find the Document You Need',
         'seo_default_description' => "Kenya's document discovery, sharing and download hub. Search schemes of work, exams, CV templates, business plans and more. Preview, pay via M-Pesa and download instantly.",
-        'seo_title_suffix' => ' | PATADOCS', 'canonical_urls' => '1', 'sitemap_enabled' => '1', 'og_image' => '',
+        'seo_title_suffix' => ' | PATADOCS', 'canonical_urls' => '1', 'sitemap_enabled' => '1', 'og_image' => '', 'force_canonical_host' => '1', 'indexnow_enabled' => '1', 'reviews_auto_approve' => '0',
         // Payment Hub
         'hub_url' => 'https://payments.editoriaweb.co.ke', 'hub_client_id' => '', 'hub_client_secret' => '', 'hub_webhook_secret' => '',
         'hub_timeout' => '20', 'hub_token' => '', 'hub_token_expires' => '0',   // hub_token*: cached bearer token, managed by the code

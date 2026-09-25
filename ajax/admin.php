@@ -75,6 +75,16 @@ switch ($action) {
         require_admin('reports.manage');
         if (!in_array($val, ['new', 'reviewing', 'resolved', 'dismissed'], true)) { $fail('Invalid status.'); }
         db_exec('UPDATE document_reports SET status = ?, handled_by = ? WHERE id = ?', [$val, $_SESSION['admin']['id'], $id]); log_admin('report_' . $val, 'report', $id); $ok('Report updated.');
+    case 'review_status':
+        require_admin('reports.manage');
+        if (!in_array($val, ['approved', 'rejected', 'delete'], true)) { $fail('Invalid status.'); }
+        $rv = db_row('SELECT * FROM document_reviews WHERE id = ?', [$id]); if (!$rv) { $fail('Review not found.', 404); }
+        if ($val === 'delete') { db_exec('DELETE FROM document_reviews WHERE id = ?', [$id]); } else { db_exec('UPDATE document_reviews SET status = ? WHERE id = ?', [$val, $id]); }
+        if ($val === 'approved' || $rv['status'] === 'approved') {                 // the page's rating changed: fresh lastmod + tell IndexNow
+            db_exec('UPDATE documents SET updated_at = NOW() WHERE id = ?', [$rv['document_id']]);
+            if (($d = doc_get((int)$rv['document_id'])) && $d['status'] === 'published') { indexnow_doc($d); }
+        }
+        log_admin('review_' . $val, 'review', $id); $ok($val === 'delete' ? 'Review deleted.' : 'Review ' . $val . '.');
     case 'request_status':
         require_admin('requests.manage');
         if (!in_array($val, ['new', 'reviewing', 'found', 'created', 'rejected'], true)) { $fail('Invalid status.'); }
@@ -95,7 +105,7 @@ switch ($action) {
         $o = order_get($id); if (!$o || $o['status'] !== 'paid') { $fail('Only paid orders can be marked as refunded.'); }
         db_exec("UPDATE orders SET status = 'refunded' WHERE id = ?", [$id]);
         db_exec("UPDATE download_tokens SET status = 'revoked' WHERE order_id = ?", [$id]);
-        if ($o['document_id']) { db_exec('UPDATE documents SET revenue = GREATEST(0, revenue - ?), purchase_count = GREATEST(0, purchase_count - 1) WHERE id = ?', [$o['amount'], $o['document_id']]); }
+        if ($o['document_id']) { db_exec('UPDATE documents SET revenue = GREATEST(0, revenue - ?), purchase_count = GREATEST(0, purchase_count - 1), updated_at = updated_at WHERE id = ?', [$o['amount'], $o['document_id']]); }
         log_admin('order_refunded', 'order', $o['order_code'], money($o['amount']));
         $ok('Order marked as refunded and its download links were revoked. (Refund the money from your M-Pesa/Payment Hub.)');
     case 'token_revoke':

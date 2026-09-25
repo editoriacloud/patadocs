@@ -18,6 +18,7 @@ $tabs = [
         ['max_file_mb', 'Maximum file size (MB) — admin uploads', 'number', 'Limited by PHP: upload_max_filesize / post_max_size.', [1, 512]],
         ['default_download_limit', 'Default download limit per purchase', 'number', '0 = unlimited until the link expires.', [0, 100]],
         ['default_preview_pages', 'Default preview pages', 'number', '', [1, 20]],
+        ['reviews_auto_approve', 'Publish verified-buyer reviews without moderation', 'bool', 'Off = every review waits in Admin → Reviews.'],
     ]],
     'preview' => ['Preview', false, [
         ['preview_enabled', 'Generate protected previews automatically', 'bool'],
@@ -28,7 +29,8 @@ $tabs = [
     ]],
     'seo' => ['SEO', false, [
         ['seo_default_title', 'Default SEO title (homepage)', 'text'], ['seo_default_description', 'Default meta description', 'textarea'], ['seo_title_suffix', 'Title suffix added to every page', 'text', 'e.g. " | PATADOCS"'],
-        ['canonical_urls', 'Output canonical URLs', 'bool'], ['sitemap_enabled', 'Enable sitemap.xml', 'bool'], ['clean_urls', 'Clean URLs (needs Apache mod_rewrite)', 'bool', 'Turn OFF if links show 404 after install.'],
+        ['canonical_urls', 'Output canonical URLs', 'bool'], ['force_canonical_host', 'Redirect to the canonical domain (301 http→https and www↔non-www, from BASE_URL in config.php)', 'bool'],
+        ['indexnow_enabled', 'Notify Bing / Yandex instantly (IndexNow) when documents are published, changed or removed', 'bool'], ['sitemap_enabled', 'Enable sitemap.xml', 'bool'], ['clean_urls', 'Clean URLs (needs Apache mod_rewrite)', 'bool', 'Turn OFF if links show 404 after install.'],
     ]],
     'hub' => ['Payment Hub', true, [
         ['hub_url', 'Payment Hub URL', 'url', 'https://payments.editoriaweb.co.ke — the Hub address only, without /api/v1.'],

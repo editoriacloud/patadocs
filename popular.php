@@ -13,7 +13,7 @@ $meta = [
     'canonical' => page_url('popular', $pg['page'] > 1 ? 'page=' . $pg['page'] : ''),
     'description' => 'The most viewed and downloaded documents on ' . setting('site_name') . ': schemes of work, exams, templates, business plans and more.',
     'schema' => [breadcrumb_schema([['Home', url('')], ['Popular documents', null]])],
-];
+] + seo_pagination($pg, page_url('popular'));
 include __DIR__ . '/includes/header.php';
 ?>
 <section class="page-section active" id="page-popular">

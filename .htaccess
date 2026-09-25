@@ -9,7 +9,8 @@ DirectoryIndex index.php
 <IfModule mod_rewrite.c>
 RewriteEngine On
 
-# --- Force HTTPS (uncomment once your SSL certificate is active) ---
+# --- HTTPS + www/non-www: PHP already 301-redirects every page to BASE_URL's scheme and host
+#     (Admin → Settings → SEO → "Redirect to the canonical domain"). Uncomment to do it for static files too.
 # RewriteCond %{HTTPS} !=on
 # RewriteCond %{HTTP:X-Forwarded-Proto} !https
 # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
@@ -19,13 +20,16 @@ RewriteRule ^(private_documents|includes)(/|$) - [F,L]
 RewriteRule ^uploads/temporary(/|$) - [F,L]
 RewriteRule \.(sql|md|log|ini|bak|sh|inc)$ - [F,L]
 
+# --- SEO endpoints (before the real-file rule so they always win) ---
+RewriteRule ^robots\.txt$ robots.php [L]
+RewriteRule ^sitemap\.xml$ sitemap.php [L]
+RewriteRule ^sitemap-([a-z]+)(?:-([0-9]+))?\.xml$ sitemap.php?part=$1&n=$2 [L,QSA]
+RewriteRule ^([a-f0-9]{32})\.txt$ indexnow.php?key=$1 [L]
+
 # --- Real files and folders are served as they are ---
 RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
-
-# --- Dynamic sitemap ---
-RewriteRule ^sitemap\.xml$ sitemap.php [L]
 
 # --- Top level pages: /search /about /contribute ... ---
 RewriteRule ^(search|categories|popular|contribute|request-document|about|contact|recover|saved|payment|payment-success|download)/?$ $1.php [L,QSA]

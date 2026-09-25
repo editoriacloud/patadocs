@@ -9,11 +9,12 @@ $siteName = setting('site_name', 'PATADOCS');
 $brand = preg_match('/^(.+?)(docs)$/i', $siteName, $bm) ? e($bm[1]) . '<span>' . e($bm[2]) . '</span>' : e($siteName);
 static $badgeCounts = null;
 if ($badgeCounts === null) {
-    $badgeCounts = ['contrib' => 0, 'requests' => 0, 'reports' => 0];
+    $badgeCounts = ['contrib' => 0, 'requests' => 0, 'reports' => 0, 'reviews' => 0];
     try {
         $badgeCounts['contrib'] = (int)db_val("SELECT COUNT(*) FROM contributions WHERE status IN ('pending','under_review')");
         $badgeCounts['requests'] = (int)db_val("SELECT COUNT(*) FROM document_requests WHERE status = 'new'");
         $badgeCounts['reports'] = (int)db_val("SELECT COUNT(*) FROM document_reports WHERE status = 'new'");
+        $badgeCounts['reviews'] = (int)db_val("SELECT COUNT(*) FROM document_reviews WHERE status = 'pending'");
     } catch (Throwable $e) { }
 }
 $nav = [
@@ -27,6 +28,7 @@ $nav = [
         ['contributions', 'Contributions', 'contributions.php', 'contributions.review', $badgeCounts['contrib']],
         ['requests', 'Requests & Messages', 'requests.php', 'requests.manage', $badgeCounts['requests']],
         ['reports', 'Document Reports', 'reports.php', 'reports.manage', $badgeCounts['reports']],
+        ['reviews', 'Reviews', 'reviews.php', 'reports.manage', $badgeCounts['reviews']],
     ],
     'SALES' => [['orders', 'Orders', 'orders.php', 'orders.view', 0], ['payments', 'Payments', 'payments.php', 'payments.view', 0], ['downloads', 'Downloads', 'downloads.php', 'downloads.manage', 0]],
     'INSIGHTS' => [['analytics', 'Analytics & SEO', 'analytics.php', 'analytics.view', 0]],

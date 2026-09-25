@@ -43,6 +43,29 @@ if ($tab === 'seo') {
     $seo['nopreview'] = (int)db_val("SELECT COUNT(*) FROM documents WHERE status = 'published' AND preview_status <> 'ready'");
     $seo['catnodesc'] = array_values(array_filter(cats_all(), function ($c) { return $c['status'] === 'active' && trim((string)$c['description']) === ''; }));
     $seo['published'] = (int)db_val("SELECT COUNT(*) FROM documents WHERE status = 'published'");
+    // Page-by-page audit of what Google actually shows: title (with suffix) and meta description lengths,
+    // duplicates, thin text, missing preview image / category.
+    $suffixLen = mb_strlen((string)setting('seo_title_suffix', ' | ' . setting('site_name')));
+    $dupT = []; foreach (db_all("SELECT LOWER(COALESCE(NULLIF(seo_title, ''), title)) t FROM documents WHERE status = 'published' GROUP BY t HAVING COUNT(*) > 1") as $r) { $dupT[$r['t']] = true; }
+    $dupD = []; foreach (db_all("SELECT LOWER(meta_description) m FROM documents WHERE status = 'published' AND meta_description <> '' GROUP BY m HAVING COUNT(*) > 1") as $r) { $dupD[$r['m']] = true; }
+    $seo['issues'] = []; $seo['issue_total'] = 0;
+    foreach (db_all("SELECT id, title, seo_title, meta_description, category_id, preview_status, CHAR_LENGTH(COALESCE(description, '')) dlen,
+                     (CHAR_LENGTH(TRIM(COALESCE(description, ''))) - CHAR_LENGTH(REPLACE(TRIM(COALESCE(description, '')), ' ', '')) + (TRIM(COALESCE(description, '')) <> '')) words
+                     FROM documents WHERE status = 'published' ORDER BY id DESC LIMIT 20000") as $d) {
+        $t = trim((string)$d['seo_title']) !== '' ? $d['seo_title'] : $d['title']; $tl = mb_strlen($t) + $suffixLen;
+        $m = trim((string)$d['meta_description']); $ml = $m !== '' ? mb_strlen($m) : min(158, (int)$d['dlen']);
+        $iss = [];
+        if ($tl > 65) { $iss[] = ['orange', 'Title ' . $tl . ' chars (Google shows ~60)']; } elseif (mb_strlen($t) < 20) { $iss[] = ['orange', 'Title very short']; }
+        if (isset($dupT[mb_strtolower($t)])) { $iss[] = ['red', 'Duplicate title']; }
+        if ($ml < 70) { $iss[] = ['red', 'Description ' . $ml . ' chars (aim 120–160)']; } elseif ($m !== '' && mb_strlen($m) > 165) { $iss[] = ['orange', 'Meta description ' . mb_strlen($m) . ' chars (cut at ~160)']; }
+        if ($m !== '' && isset($dupD[mb_strtolower($m)])) { $iss[] = ['red', 'Duplicate meta description']; }
+        if ((int)$d['words'] < 50) { $iss[] = ['orange', 'Thin text: ' . (int)$d['words'] . ' words (aim 150+)']; }
+        if ($d['preview_status'] !== 'ready') { $iss[] = ['orange', 'No preview image']; }
+        if (!$d['category_id']) { $iss[] = ['red', 'No category']; }
+        if ($iss) { $seo['issue_total']++; if (count($seo['issues']) < 100) { $seo['issues'][] = ['doc' => $d, 'iss' => $iss]; } }
+    }
+    $seo['subfolder'] = trim((string)parse_url(url(''), PHP_URL_PATH), '/') !== '';
+    require_once __DIR__ . '/../includes/indexnow.php';
 }
 $adm = ['title' => 'Analytics & SEO', 'active' => 'analytics'];
 include __DIR__ . '/../includes/admin_header.php';
@@ -81,11 +104,25 @@ $rlink = function ($r, $lab) use ($tab, $range) { return '<a class="btn-classic 
         <div class="stat-box"><div class="stat-label">Without SEO title</div><div class="stat-value"><?= num($seo['notitle']) ?></div><div class="stat-sub">title is used instead</div></div>
         <div class="stat-box"><div class="stat-label">Without description</div><div class="stat-value"><?= num($seo['nodesc']) ?></div><div class="stat-sub">thin pages rank badly</div></div>
         <div class="stat-box"><div class="stat-label">Without preview</div><div class="stat-value"><?= num($seo['nopreview']) ?></div></div>
+        <div class="stat-box"><div class="stat-label">Pages with SEO issues</div><div class="stat-value"><?= num($seo['issue_total']) ?></div><div class="stat-sub">see the audit below</div></div>
     </div>
     <div class="result-area" style="margin-bottom:16px;"><strong>Technical checklist</strong>
         <div class="result-row">Sitemap: <a href="<?= e(url('sitemap.xml')) ?>" target="_blank"><?= e(url('sitemap.xml')) ?></a> <?= setting('sitemap_enabled', '1') === '1' ? '<span class="badge b-green">on</span>' : '<span class="badge b-red">off</span>' ?></div>
         <div class="result-row">robots.txt: <a href="<?= e(url('robots.txt')) ?>" target="_blank"><?= e(url('robots.txt')) ?></a> — submit the sitemap in Google Search Console</div>
-        <div class="result-row">Clean URLs: <?= setting('clean_urls', '1') === '1' ? '<span class="badge b-green">on</span>' : '<span class="badge b-orange">off</span>' ?> · Canonical tags: <?= setting('canonical_urls', '1') === '1' ? '<span class="badge b-green">on</span>' : '<span class="badge b-red">off</span>' ?> · HTTPS: <?= is_https() ? '<span class="badge b-green">yes</span>' : '<span class="badge b-orange">no</span>' ?></div></div>
+        <div class="result-row">Clean URLs: <?= setting('clean_urls', '1') === '1' ? '<span class="badge b-green">on</span>' : '<span class="badge b-orange">off</span>' ?> · Canonical tags: <?= setting('canonical_urls', '1') === '1' ? '<span class="badge b-green">on</span>' : '<span class="badge b-red">off</span>' ?> · HTTPS: <?= is_https() ? '<span class="badge b-green">yes</span>' : '<span class="badge b-orange">no</span>' ?>
+            · Canonical-domain redirect: <?= setting('force_canonical_host', '1') === '1' && defined('BASE_URL') && BASE_URL !== '' ? '<span class="badge b-green">on</span>' : '<span class="badge b-orange">off (set BASE_URL in config.php)</span>' ?>
+            · Logo for Google: <?= setting('site_logo') ? '<span class="badge b-green">set</span>' : '<span class="badge b-orange">missing — upload in Settings → General</span>' ?></div>
+        <div class="result-row">IndexNow (Bing, Yandex…): <?= setting('indexnow_enabled', '1') === '1' ? '<span class="badge b-green">on</span> key file <a href="' . e(indexnow_key_url()) . '" target="_blank">' . e(indexnow_key_url()) . '</a> · last submit: ' . e(setting('indexnow_last') ?: 'none yet') : '<span class="badge b-orange">off</span>' ?></div>
+        <div class="result-row">Google: add the site in <a href="https://search.google.com/search-console" target="_blank" rel="noopener">Search Console</a> and submit <code><?= e(url('sitemap.xml')) ?></code>; Bing: <a href="https://www.bing.com/webmasters" target="_blank" rel="noopener">Bing Webmaster Tools</a>.</div></div>
+    <?php if ($seo['subfolder']) { ?>
+        <div class="alert alert-warn">⚠ The site runs in a sub-folder (<code><?= e(parse_url(url(''), PHP_URL_PATH)) ?></code>). Search engines only read <code>robots.txt</code> at the root of the domain, so paste these lines into <code><?= e(preg_replace('#^(https?://[^/]+).*$#', '$1', url(''))) ?>/robots.txt</code>:</div>
+        <textarea readonly class="mono" rows="12" style="width:100%; margin-bottom:16px;"><?= e(robots_txt()) ?></textarea>
+    <?php } ?>
+    <div class="section-title">SEO AUDIT — PAGE BY PAGE<?= $seo['issue_total'] > count($seo['issues']) ? ' (first ' . count($seo['issues']) . ' of ' . num($seo['issue_total']) . ')' : '' ?></div>
+    <div class="gv-wrap"><table class="gv-table compact"><tbody><?php foreach ($seo['issues'] as $row) { $d = $row['doc'];
+        echo '<tr><td class="doc-title">' . e($d['title']) . '<span class="sub">' . implode(' ', array_map(function ($i) { return '<span class="badge b-' . $i[0] . '">' . e($i[1]) . '</span>'; }, $row['iss'])) . '</span></td>'
+            . '<td class="actions"><a class="btn-classic btn-sm primary" href="edit-document.php?id=' . (int)$d['id'] . '&_step=7">FIX</a></td></tr>'; }
+        if (!$seo['issues']) { echo '<tr><td class="empty-cell">No SEO issues found on published documents. 🎉</td></tr>'; } ?></tbody></table></div>
     <div class="section-title">DOCUMENTS WITHOUT A META DESCRIPTION</div>
     <div class="gv-wrap"><table class="gv-table compact"><tbody><?php foreach ($seo['nometa'] as $d) { echo '<tr><td class="doc-title">' . e($d['title']) . '</td><td class="actions"><a class="btn-classic btn-sm primary" href="edit-document.php?id=' . (int)$d['id'] . '&_step=7">FIX IN SEO STEP</a></td></tr>'; } if (!$seo['nometa']) { echo '<tr><td class="empty-cell">All published documents have a meta description. 🎉</td></tr>'; } ?></tbody></table></div>
     <div class="section-title">CATEGORIES WITHOUT A DESCRIPTION</div>

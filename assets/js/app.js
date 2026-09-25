@@ -378,7 +378,7 @@
     function poll(order, key, t0, status, btn, r0) {
         if (!document.body.contains(status)) { return; }          // modal was closed or replaced → stop polling
         api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(order) + '&k=' + encodeURIComponent(key)).then(function (r) {
-            if (r.status === 'paid') { status.innerHTML = '✅ Payment Confirmed!' + (r.receipt ? '<br>M-PESA Receipt: ' + esc(r.receipt) : ''); setTimeout(function () { showSuccess(r); }, 900); return; }
+            if (r.status === 'paid') { status.innerHTML = '✅ Payment Confirmed!' + (r.receipt ? '<br>M-PESA Receipt: ' + esc(r.receipt) : ''); r.key = key; setTimeout(function () { showSuccess(r); }, 900); return; }
             if (r.status === 'failed' || r.status === 'expired' || r.status === 'refunded') {
                 if (btn) { btn.disabled = false; }
                 if (r0 && payItem) { mOk.textContent = 'TRY AGAIN'; mOk.onclick = function () { showPayment(payItem); }; }   // that invoice is dead: start a new order
@@ -404,7 +404,8 @@
             '<div style="font-size:1.1rem; color:#404040; margin-bottom:18px;">Your document is ready.</div>' + links +
             '<div style="margin-top:12px; font-size:1rem; color:#666;">Your download will start automatically...</div>' +
             '<div style="margin-top:8px; font-size:0.95rem; color:#666;">Having trouble? Click <strong>Download Now</strong>.</div>' +
-            '<div style="margin-top:12px; font-size:0.95rem;">Order ID: <strong>' + esc(r.order) + '</strong> — keep it to recover your download later.</div></div>');
+            '<div style="margin-top:12px; font-size:0.95rem;">Order ID: <strong>' + esc(r.order) + '</strong> — keep it to recover your download later.</div>' +
+            (r.key ? '<div style="margin-top:10px;"><a href="' + esc(PD.base + 'payment-success.php?o=' + encodeURIComponent(r.order) + '&k=' + encodeURIComponent(r.key)) + '#rate">⭐ Rate this document later</a></div>' : '') + '</div>');
         if (r.downloads && r.downloads.length === 1) {
             setTimeout(function () { var f = document.createElement('iframe'); f.style.display = 'none'; f.src = r.downloads[0].url; document.body.appendChild(f); }, 700);
         }
@@ -441,6 +442,20 @@
     /* Success page: start the download automatically */
     var autoDl = $('[data-autodownload]');
     if (autoDl) { setTimeout(function () { var f = document.createElement('iframe'); f.style.display = 'none'; f.src = autoDl.getAttribute('href'); document.body.appendChild(f); }, 900); }
+
+    /* ---------------- Verified-buyer review forms ---------------- */
+    $$('[data-review-form]').forEach(function (f) {
+        f.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var btn = $('button[type=submit]', f), msg = $('.review-msg', f);
+            if (!$('input[name=rating]:checked', f)) { msg.textContent = 'Choose a star rating first.'; return; }
+            btn.disabled = true; msg.textContent = 'Sending...';
+            api(f.getAttribute('action'), { data: new FormData(f) }).then(function (r) {
+                if (r.ok) { f.innerHTML = '<div class="alert alert-success">' + esc(r.message) + '</div>'; return; }
+                btn.disabled = false; msg.textContent = r.message || 'Could not send your review. Please try again.';
+            });
+        });
+    });
 
     /* ---------------- Request + report modals ---------------- */
     function catSelectHtml() { var t = $('#catTemplate'); return t ? t.innerHTML : '<option value="0">Other</option>'; }

@@ -31,31 +31,113 @@ function abort_page(int $code, string $title, string $message, array $links = []
 
 // ---- SEO --------------------------------------------------------------------------
 
-/** <title>, description, canonical, robots, Open Graph, Twitter and JSON-LD for the page. */
+/** Robots directive for a page: defaults to indexable with the richest snippet/preview permissions. */
+function seo_robots(array $m): string
+{
+    $r = strtolower(str_replace(' ', '', (string)($m['robots'] ?? 'index,follow')));
+    if (strpos($r, 'noindex') === false && strpos($r, 'max-') === false) { $r .= ',max-snippet:-1,max-image-preview:large,max-video-preview:-1'; }
+    return $r;
+}
+
+/**
+ * <title>, description, canonical, robots, prev/next, Open Graph, Twitter and JSON-LD for the page.
+ * $m keys: title, description, canonical, robots, keywords, og_type, og_image, og_image_alt,
+ * published, modified (dates), prev, next (pagination URLs), schema[].
+ */
 function seo_head(array $m): string
 {
     $site = setting('site_name', 'PATADOCS');
-    $title = trim((string)($m['title'] ?? ''));
+    $title = trim(preg_replace('/\s+/u', ' ', (string)($m['title'] ?? '')));
     $full = $title === '' ? setting('seo_default_title') : (stripos($title, $site) !== false ? $title : $title . setting('seo_title_suffix', ' | ' . $site));
-    $desc = excerpt((string)($m['description'] ?? '') !== '' ? (string)$m['description'] : setting('seo_default_description'), 300);
+    $desc = excerpt(trim(preg_replace('/\s+/u', ' ', (string)($m['description'] ?? ''))) !== '' ? (string)$m['description'] : setting('seo_default_description'), 160);
     $canon = (string)($m['canonical'] ?? '');
-    $img = (string)($m['og_image'] ?? '') ?: (setting('og_image') ?: asset('images/og-default.png'));
+    $img = (string)($m['og_image'] ?? '') ?: (string)setting('og_image');
+    if ($img === '') { $img = asset('images/og-default.png'); } elseif (!preg_match('#^https?://#i', $img)) { $img = url($img); }
+    $ogTitle = $title !== '' ? $title : setting('seo_default_title');
     $h = '<title>' . e($full) . "</title>\n";
     $h .= '<meta name="description" content="' . e($desc) . "\">\n";
     if (!empty($m['keywords'])) { $h .= '<meta name="keywords" content="' . e($m['keywords']) . "\">\n"; }
-    $h .= '<meta name="robots" content="' . e($m['robots'] ?? 'index,follow') . "\">\n";
+    $h .= '<meta name="robots" content="' . e(seo_robots($m)) . "\">\n";
     if ($canon !== '' && setting('canonical_urls', '1') === '1') { $h .= '<link rel="canonical" href="' . e($canon) . "\">\n"; }
+    if (!empty($m['prev'])) { $h .= '<link rel="prev" href="' . e($m['prev']) . "\">\n"; }
+    if (!empty($m['next'])) { $h .= '<link rel="next" href="' . e($m['next']) . "\">\n"; }
     $h .= '<meta property="og:site_name" content="' . e($site) . "\">\n";
     $h .= '<meta property="og:type" content="' . e($m['og_type'] ?? 'website') . "\">\n";
-    $h .= '<meta property="og:title" content="' . e($title !== '' ? $title : setting('seo_default_title')) . "\">\n";
+    $h .= '<meta property="og:title" content="' . e($ogTitle) . "\">\n";
     $h .= '<meta property="og:description" content="' . e($desc) . "\">\n";
     if ($canon !== '') { $h .= '<meta property="og:url" content="' . e($canon) . "\">\n"; }
-    $h .= '<meta property="og:image" content="' . e($img) . "\">\n<meta property=\"og:locale\" content=\"en_KE\">\n";
+    $h .= '<meta property="og:image" content="' . e($img) . "\">\n";
+    $h .= '<meta property="og:image:alt" content="' . e($m['og_image_alt'] ?? $ogTitle) . "\">\n<meta property=\"og:locale\" content=\"en_KE\">\n";
+    if (($m['og_type'] ?? '') === 'article') {
+        if (!empty($m['published'])) { $h .= '<meta property="article:published_time" content="' . e(date('c', strtotime($m['published']))) . "\">\n"; }
+        if (!empty($m['modified'])) { $h .= '<meta property="article:modified_time" content="' . e(date('c', strtotime($m['modified']))) . "\">\n"; }
+    }
     $h .= "<meta name=\"twitter:card\" content=\"summary_large_image\">\n";
+    $h .= '<meta name="twitter:title" content="' . e($ogTitle) . "\">\n";
+    $h .= '<meta name="twitter:description" content="' . e($desc) . "\">\n";
+    $h .= '<meta name="twitter:image" content="' . e($img) . "\">\n";
     foreach (($m['schema'] ?? []) as $s) {
         $h .= '<script type="application/ld+json">' . json_encode($s, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) . "</script>\n";
     }
     return $h;
+}
+
+/** rel=prev / rel=next URLs for a paginate() result, matching pager_html()'s links. */
+function seo_pagination(array $pg, string $base, array $params = []): array
+{
+    $u = function ($n) use ($base, $params) {
+        $q = $params; if ($n > 1) { $q['page'] = $n; } else { unset($q['page']); }
+        return rtrim($base . (strpos($base, '?') === false ? '?' : '&') . http_build_query($q), '?&');
+    };
+    return ['prev' => $pg['page'] > 1 ? $u($pg['page'] - 1) : '', 'next' => $pg['page'] < $pg['pages'] ? $u($pg['page'] + 1) : ''];
+}
+
+/** robots.txt body for this installation (served by robots.php, shown in Admin → SEO audit). */
+function robots_txt(): string
+{
+    $root = rtrim((string)parse_url(url(''), PHP_URL_PATH), '/');
+    $lines = ['User-agent: *'];
+    foreach (['admin/', 'ajax/', 'includes/', 'private_documents/', 'uploads/temporary/', 'install.php'] as $p) { $lines[] = 'Disallow: ' . $root . '/' . $p; }
+    // Internal search with a query/filters: endless URL combinations, all noindex — don't waste crawl budget on them
+    $lines[] = 'Disallow: ' . $root . '/search?';
+    $lines[] = 'Disallow: ' . $root . '/search.php?';
+    $lines[] = 'Allow: ' . $root . '/uploads/previews/';
+    $lines[] = '';
+    if (setting('sitemap_enabled', '1') === '1') { $lines[] = 'Sitemap: ' . url('sitemap.xml'); }
+    return implode("\n", $lines) . "\n";
+}
+
+/** The site as a schema.org Organization (used as brand / seller / publisher). */
+function org_schema(): array
+{
+    $o = ['@type' => 'Organization', 'name' => setting('site_name', 'PATADOCS'), 'url' => url('')];
+    if (setting('site_logo')) { $o['logo'] = url(setting('site_logo')); }
+    return $o;
+}
+
+/**
+ * schema.org Product + Offer for something sold on the site (a document or a bundle), so search results can show
+ * price and — once there are approved reviews — star ratings. $x: name, description, url, sku, images[], category,
+ * price (float), free (bool), props [name => value], rating (['count','avg']), reviews (approved review rows).
+ */
+function product_schema(array $x): array
+{
+    $offer = ['@type' => 'Offer', 'url' => $x['url'], 'price' => number_format($x['free'] ? 0 : (float)$x['price'], 2, '.', ''),
+        'priceCurrency' => setting('currency', 'KES'), 'availability' => 'https://schema.org/InStock',
+        'priceValidUntil' => date('Y-12-31', strtotime('+1 year')), 'seller' => org_schema()];
+    $p = ['@context' => 'https://schema.org', '@type' => 'Product', 'name' => $x['name'], 'description' => excerpt((string)$x['description'], 5000),
+        'url' => $x['url'], 'sku' => $x['sku'], 'brand' => ['@type' => 'Brand', 'name' => setting('site_name', 'PATADOCS')], 'offers' => $offer];
+    $p['image'] = !empty($x['images']) ? array_values($x['images']) : [asset('images/og-default.png')];
+    if (!empty($x['category'])) { $p['category'] = $x['category']; }
+    foreach (($x['props'] ?? []) as $k => $v) { if ((string)$v !== '') { $p['additionalProperty'][] = ['@type' => 'PropertyValue', 'name' => $k, 'value' => (string)$v]; } }
+    if (!empty($x['rating']['count'])) {
+        $p['aggregateRating'] = ['@type' => 'AggregateRating', 'ratingValue' => round((float)$x['rating']['avg'], 1), 'reviewCount' => (int)$x['rating']['count'], 'bestRating' => 5, 'worstRating' => 1];
+        foreach (array_slice($x['reviews'] ?? [], 0, 5) as $r) {
+            $p['review'][] = ['@type' => 'Review', 'reviewRating' => ['@type' => 'Rating', 'ratingValue' => (int)$r['rating'], 'bestRating' => 5, 'worstRating' => 1],
+                'author' => ['@type' => 'Person', 'name' => $r['name']], 'datePublished' => date('Y-m-d', strtotime($r['created_at'])), 'reviewBody' => (string)$r['comment']];
+        }
+    }
+    return $p;
 }
 
 function breadcrumb_html(array $crumbs): string

@@ -49,7 +49,7 @@ if (!token_consume((int)$t['id'])) { abort_page(410, 'Download limit reached', '
 
 db_insert('INSERT INTO download_logs (token_id, document_id, order_id, type, ip, user_agent) VALUES (?, ?, ?, ?, ?, ?)',
     [$t['id'], $doc['id'], $t['order_id'], $t['type'], client_ip(), mb_substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255)]);
-db_exec('UPDATE documents SET ' . ($t['type'] === 'paid' ? 'paid_downloads = paid_downloads + 1' : 'free_downloads = free_downloads + 1') . ' WHERE id = ?', [$doc['id']]);
+db_exec('UPDATE documents SET ' . ($t['type'] === 'paid' ? 'paid_downloads = paid_downloads + 1' : 'free_downloads = free_downloads + 1') . ', updated_at = updated_at WHERE id = ?', [$doc['id']]);
 
 $path = doc_private_path($doc); $size = (int)filesize($path); $name = doc_download_name($doc);
 while (ob_get_level() > 0) { ob_end_clean(); }

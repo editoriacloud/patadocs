@@ -4,6 +4,7 @@
  * All writes use prepared statements; every file goes through upload_check().
  */
 require_once __DIR__ . '/preview.php';
+require_once __DIR__ . '/indexnow.php';
 
 /** Problems that prevent a document from being published (empty = OK). */
 function doc_publish_errors(array $d): array
@@ -52,6 +53,7 @@ function doc_set_status(int $id, string $status): array
     } else {
         db_exec('UPDATE documents SET status = ? WHERE id = ?', [$status, $id]);
     }
+    if ($status === 'published' || $d['status'] === 'published') { indexnow_doc(doc_get($id) ?: $d); }   // appeared or disappeared
     log_admin('document_' . $status, 'document', $id, $d['title']);
     return ['ok' => true, 'message' => 'Status changed to ' . str_replace('_', ' ', $status) . '.'];
 }
@@ -66,6 +68,7 @@ function doc_delete(int $id): array
     }
     doc_remove_files($d);
     db_exec('DELETE FROM documents WHERE id = ?', [$id]);
+    if ($d['status'] === 'published') { indexnow_ping([doc_url($d)]); }
     log_admin('document_deleted', 'document', $id, $d['title']);
     return ['ok' => true, 'message' => 'Document deleted.'];
 }
@@ -210,6 +213,10 @@ function doc_save(array $post, array $files, int $id, string $intent): array
         if (!$r['ok']) { $errors[] = $r['message']; } else { $notes[] = 'Published.'; }
     } elseif ($intent === 'draft') {
         db_exec("UPDATE documents SET status = 'draft' WHERE id = ?", [$id]);       // new draft, or "unpublish" of an existing document
+    }
+    $now = doc_get($id);
+    if ($now && ($now['status'] === 'published' || ($old && $old['status'] === 'published'))) {
+        indexnow_doc($now, $old && doc_url($old) !== doc_url($now) ? $old : null);   // changed, or its URL moved
     }
     return ['ok' => !$errors, 'id' => $id, 'errors' => $errors, 'notes' => $notes];
 }

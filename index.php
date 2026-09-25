@@ -29,9 +29,15 @@ $placeholder = $st['docs'] >= 100 ? 'Search ' . number_format($st['docs']) . '+ 
 $meta = [
     'title' => '', 'description' => setting('seo_default_description'), 'canonical' => url(''), 'nav' => 'home',
     'schema' => [
-        ['@context' => 'https://schema.org', '@type' => 'WebSite', 'name' => setting('site_name'), 'url' => url(''),
+        ['@context' => 'https://schema.org', '@type' => 'WebSite', 'name' => setting('site_name'), 'url' => url(''), 'inLanguage' => 'en-KE',
+         'description' => setting('seo_default_description'), 'publisher' => org_schema(),
          'potentialAction' => ['@type' => 'SearchAction', 'target' => page_url('search', 'q={search_term_string}'), 'query-input' => 'required name=search_term_string']],
-        ['@context' => 'https://schema.org', '@type' => 'Organization', 'name' => setting('site_name'), 'url' => url('')],
+        ['@context' => 'https://schema.org'] + org_schema() + array_filter([
+            'email' => setting('site_email') ?: null, 'telephone' => setting('site_phone') ?: null,
+            'areaServed' => ['@type' => 'Country', 'name' => 'Kenya'],
+            'contactPoint' => (setting('site_email') || setting('site_phone')) ? array_filter(['@type' => 'ContactPoint', 'contactType' => 'customer support',
+                'email' => setting('site_email') ?: null, 'telephone' => setting('site_phone') ?: null, 'areaServed' => 'KE', 'availableLanguage' => ['English', 'Swahili']]) : null,
+        ]),
     ],
 ];
 include __DIR__ . '/includes/header.php';

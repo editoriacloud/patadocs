@@ -18,10 +18,38 @@ function security_boot(): void
         header("Content-Security-Policy: object-src 'none'; base-uri 'self'; frame-ancestors 'self'");
         if (is_https()) { header('Strict-Transport-Security: max-age=15552000'); }
         header_remove('X-Powered-By');
+        // Admin screens and AJAX/JSON endpoints must never appear in search results
+        if (defined('PD_AJAX') || preg_match('#/admin/[^/]*$#', str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? ''))) { header('X-Robots-Tag: noindex, nofollow'); }
+        canonical_host_redirect();
     }
     set_exception_handler('pd_exception_handler');
     // Search-engine bots don't need (or get) sessions: avoids thousands of session files.
     if (!defined('PD_NO_SESSION') && (!is_bot() || defined('PD_NEEDS_SESSION'))) { session_boot(); }
+}
+
+/**
+ * One URL per page: GET requests that arrive on another scheme or a www/non-www variant of BASE_URL's host
+ * get a 301 to the same path on BASE_URL (e.g. http://www.knickpoint.co.ke/... → https://knickpoint.co.ke/...).
+ * Unrelated hosts (a local copy, a server IP) are left alone, and a request is only treated as plain http when
+ * neither the server nor a proxy header says it is https — so a proxy setup can never cause a redirect loop.
+ */
+function canonical_host_redirect(): void
+{
+    if (PHP_SAPI === 'cli' || defined('PD_AJAX') || !defined('BASE_URL') || BASE_URL === '') { return; }
+    if (!in_array($_SERVER['REQUEST_METHOD'] ?? 'GET', ['GET', 'HEAD'], true) || setting('force_canonical_host', '1') !== '1') { return; }
+    $want = parse_url(BASE_URL);
+    if (empty($want['host']) || empty($want['scheme'])) { return; }
+    $wantHost = strtolower($want['host']) . (isset($want['port']) ? ':' . $want['port'] : '');
+    $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '' || preg_replace('/^www\./', '', $host) !== preg_replace('/^www\./', '', $wantHost)) { return; }
+    $httpsSeen = is_https() || stripos((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''), 'https') !== false
+        || stripos((string)($_SERVER['HTTP_CF_VISITOR'] ?? ''), 'https') !== false || strtolower((string)($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on';
+    $schemeWrong = strtolower($want['scheme']) === 'https' && !$httpsSeen;
+    if ($host === $wantHost && !$schemeWrong) { return; }
+    $uri = (string)($_SERVER['REQUEST_URI'] ?? '/');
+    if ($uri === '' || $uri[0] !== '/') { $uri = '/' . $uri; }
+    header('Location: ' . strtolower($want['scheme']) . '://' . $wantHost . $uri, true, 301);
+    exit;
 }
 
 function session_boot(): void

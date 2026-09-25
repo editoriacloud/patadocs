@@ -5,6 +5,7 @@
  * document.php?slug=... when URL rewriting is off.
  */
 require __DIR__ . '/includes/init.php';
+require_once __DIR__ . '/includes/reviews.php';
 
 $doc = $GLOBALS['ROUTE_DOC'] ?? null;
 $viaRouter = $doc !== null;
@@ -13,6 +14,10 @@ if (!$doc) {
     elseif (get_int('id')) { $doc = doc_get(get_int('id')); }
 }
 $adminView = admin_current() && admin_can('documents.view');
+if ($doc && $doc['status'] === 'archived' && !$adminView) {      // gone for good: 410 makes search engines drop it quickly
+    abort_page(410, 'Document removed', 'This document has been removed and is no longer available. Search for a similar document or request it.',
+        [['🔍 SEARCH DOCUMENTS', page_url('search')], ['📝 REQUEST A DOCUMENT', page_url('request-document')], ['🏠 HOME', url('')]]);
+}
 if (!$doc || ($doc['status'] !== 'published' && !$adminView)) {
     abort_page(404, 'Document not found', 'This document does not exist or is no longer available. Try searching, or request it and we will source it for you.',
         [['🔍 SEARCH DOCUMENTS', page_url('search')], ['📝 REQUEST A DOCUMENT', page_url('request-document')], ['🏠 HOME', url('')]]);
@@ -23,7 +28,7 @@ if (!$viaRouter && setting('clean_urls', '1') === '1' && $doc['status'] === 'pub
 // Count the view once per visitor session (bots are ignored).
 if ($doc['status'] === 'published' && !is_bot() && session_status() === PHP_SESSION_ACTIVE && empty($_SESSION['viewed'][$doc['id']])) {
     $_SESSION['viewed'][$doc['id']] = time();
-    db_exec('UPDATE documents SET view_count = view_count + 1 WHERE id = ?', [$doc['id']]);
+    db_exec('UPDATE documents SET view_count = view_count + 1, updated_at = updated_at WHERE id = ?', [$doc['id']]);
     stat_bump((int)$doc['id'], 'views');
 }
 
@@ -37,22 +42,31 @@ $tags = tags_get($id);
 $related = related_docs($doc, 6);
 $collections = doc_collections($id);
 $pv = doc_preview_urls($doc);
+$rating = review_summary($id);
+$reviews = $rating['count'] ? reviews_for($id, 10) : [];
 $format = doc_ext_label((string)$doc['file_ext']);
 $catRow = $doc['category_id'] ? cat_get((int)$doc['category_id']) : null;
 $desc = trim((string)$doc['meta_description']) !== '' ? $doc['meta_description'] : ((string)$doc['description'] !== '' ? excerpt($doc['description'], 158) : $doc['title'] . ' - ' . $format . ' document. Preview and download on ' . setting('site_name') . '.');
 
+$catPath = $catRow ? implode(' > ', array_map(function ($c) { return $c['name']; }, cat_breadcrumb((int)$catRow['id']))) : '';
 $meta = [
     'title' => trim((string)$doc['seo_title']) !== '' ? $doc['seo_title'] : $doc['title'],
     'description' => $desc, 'keywords' => $doc['seo_keywords'], 'canonical' => $canonical, 'nav' => 'browse',
-    'og_type' => 'article', 'og_image' => $pv[0] ?? '',
+    'og_type' => 'article', 'og_image' => $pv[0] ?? '', 'og_image_alt' => 'Preview of ' . $doc['title'],
+    'published' => $doc['published_at'], 'modified' => $doc['updated_at'],
     'robots' => $doc['status'] === 'published' ? 'index,follow' : 'noindex,nofollow',
+    'payment_widget' => !$isFree,
     'schema' => [
         array_filter(['@context' => 'https://schema.org', '@type' => 'WebPage', 'name' => $doc['title'], 'description' => $desc, 'url' => $canonical,
             'inLanguage' => 'en-KE', 'datePublished' => $doc['published_at'] ? date('c', strtotime($doc['published_at'])) : null,
-            'dateModified' => date('c', strtotime($doc['updated_at'])), 'isPartOf' => ['@type' => 'WebSite', 'name' => setting('site_name'), 'url' => url('')]]),
+            'dateModified' => date('c', strtotime($doc['updated_at'])), 'primaryImageOfPage' => $pv[0] ?? null,
+            'isPartOf' => ['@type' => 'WebSite', 'name' => setting('site_name'), 'url' => url('')]]),
+        product_schema(['name' => $doc['title'], 'description' => (string)$doc['description'] !== '' ? $doc['description'] : $desc, 'url' => $canonical,
+            'sku' => 'PD-' . $id, 'images' => array_slice($pv, 0, 3), 'category' => $catPath, 'price' => (float)$doc['price'], 'free' => $isFree,
+            'props' => ['Format' => $format, 'Pages' => $doc['pages'] ?: '', 'Document type' => (string)$doc['doc_type']],
+            'rating' => $rating, 'reviews' => $reviews]),
         breadcrumb_schema($crumbs),
     ],
-    'payment_widget' => !$isFree,
     'doc_js' => ['id' => $id, 'title' => $doc['title'], 'url' => $canonical, 'price' => price_label($doc), 'free' => $isFree, 'format' => $format, 'pages' => (int)$doc['pages']],
 ];
 include __DIR__ . '/includes/header.php';
@@ -70,7 +84,7 @@ include __DIR__ . '/includes/header.php';
                     <?php if ($pv) { ?>
                         <div class="preview-container has-img" id="previewContainer">
                             <div class="preview-watermark" id="previewWatermark"><?= e(setting('preview_watermark', 'PATADOCS PREVIEW')) ?></div>
-                            <div class="preview-page has-img" id="previewPage"><img id="pvImg" alt="Protected preview of <?= e($doc['title']) ?>" draggable="false"></div>
+                            <div class="preview-page has-img" id="previewPage"><img id="pvImg" src="<?= e($pv[0]) ?>" style="width:100%;" fetchpriority="high" decoding="async" alt="Protected preview of <?= e($doc['title']) ?> — page 1" draggable="false"></div>
                         </div>
                         <div class="viewer-bar" id="previewViewer" data-pages="<?= e(json_encode($pv)) ?>">
                             <button type="button" class="btn-classic" id="pvPrev">◀ PREV</button>
@@ -101,6 +115,7 @@ include __DIR__ . '/includes/header.php';
                     <div class="doc-selected">
                         <div class="lbl">Selected Document</div>
                         <h1 class="name"><?= e($doc['title']) ?></h1>
+                        <?php if ($rating['count']) { echo '<a class="rating-line" href="#reviews">' . stars_html($rating['avg']) . ' <strong>' . e(number_format($rating['avg'], 1)) . '</strong> (' . num($rating['count']) . ' review' . ($rating['count'] === 1 ? '' : 's') . ')</a>'; } ?>
                         <div class="doc-facts">
                             <?php if ($catRow) { echo '<span>📁 ' . e($catRow['name']) . '</span>'; } ?>
                             <span>📄 <?= e($format) ?></span>
@@ -119,7 +134,7 @@ include __DIR__ . '/includes/header.php';
                                 <button type="submit" class="btn-classic success block" id="freeDownloadBtn"><span style="font-size:1.1rem;">⬇ DOWNLOAD FREE</span></button>
                             </form>
                         <?php } else { ?>
-                            <a class="btn-classic primary" id="checkoutBtn" href="<?= e(url('payment.php?doc=' . $id)) ?>"><span style="font-size:1.1rem;">💳 BUY &amp; DOWNLOAD</span></a>
+                            <a class="btn-classic primary" id="checkoutBtn" rel="nofollow" href="<?= e(url('payment.php?doc=' . $id)) ?>"><span style="font-size:1.1rem;">💳 BUY &amp; DOWNLOAD</span></a>
                         <?php } ?>
                     </div>
                     <div class="action-row">
@@ -162,6 +177,21 @@ include __DIR__ . '/includes/header.php';
             <?php if ($tags) { echo '<div class="tag-row">'; foreach ($tags as $t) { echo '<a class="pill" href="' . e(page_url('search', 'tag=' . rawurlencode($t['slug']))) . '">#' . e($t['name']) . '</a>'; } echo '</div>'; } ?>
         </div>
     </div>
+
+    <?php if ($reviews) { ?>
+    <div class="panel" id="reviews">
+        <div class="panel-header">REVIEWS FROM VERIFIED BUYERS</div>
+        <div class="panel-body">
+            <div class="rating-line big"><?= stars_html($rating['avg']) ?> <strong><?= e(number_format($rating['avg'], 1)) ?> out of 5</strong> · <?= num($rating['count']) ?> review<?= $rating['count'] === 1 ? '' : 's' ?></div>
+            <?php foreach ($reviews as $r) { ?>
+                <div class="review-item">
+                    <div><?= stars_html((float)$r['rating']) ?> <strong><?= e($r['name']) ?></strong> <span class="badge b-green">✔ Verified buyer</span> <span class="muted small"><?= e(fmt_date($r['created_at'])) ?></span></div>
+                    <?php if ((string)$r['comment'] !== '') { echo '<div class="desc-text">' . nl2br(e($r['comment'])) . '</div>'; } ?>
+                </div>
+            <?php } ?>
+        </div>
+    </div>
+    <?php } ?>
 
     <?php if ($related) { ?>
     <div class="panel">

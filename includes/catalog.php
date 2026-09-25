@@ -196,7 +196,7 @@ function doc_rebuild_search(int $docId): void
     foreach (db_all('SELECT m.meta_value FROM document_meta m JOIN metadata_fields f ON f.id = m.field_id WHERE m.document_id = ? AND f.is_searchable = 1', [$docId]) as $r) { $parts[] = str_replace('|', ' ', $r['meta_value']); }
     $parts[] = mb_substr(strip_tags((string)$d['description']), 0, 600);
     $text = trim(preg_replace('/\s+/u', ' ', implode(' ', array_filter($parts, function ($x) { return $x !== null && (string)$x !== ''; }))));
-    db_exec('UPDATE documents SET search_text = ? WHERE id = ?', [$text, $docId]);
+    db_exec('UPDATE documents SET search_text = ?, updated_at = updated_at WHERE id = ?', [$text, $docId]);
 }
 function docs_rebuild_all(): int
 {

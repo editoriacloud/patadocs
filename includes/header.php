@@ -19,12 +19,15 @@ $menu = [
 ];
 if (setting('show_admin_link', '1') === '1') { $menu[] = ['admin', 'Admin Panel', url('admin/')]; }
 $favicon = setting('site_favicon') ? url(setting('site_favicon')) : asset('images/favicon.svg');
+// Same directive as the <meta name="robots"> tag, as an HTTP header (the only one crawlers honour for non-HTML fetches and redirects).
+if (!headers_sent() && strpos(seo_robots($meta), 'noindex') !== false) { header('X-Robots-Tag: ' . seo_robots($meta)); }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-KE">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<meta name="theme-color" content="#000080">
 <?= seo_head($meta) ?>
 <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
 <link rel="icon" href="<?= e($favicon) ?>">

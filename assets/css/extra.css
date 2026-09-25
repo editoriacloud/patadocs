@@ -233,3 +233,20 @@ body.dark-theme .step-title { color: #6aafff; }
 /* h1/h2 used for SEO inside design blocks must not add browser-default margins */
 h1.hero-title { margin: 0 0 8px; }
 .doc-selected h1.name { margin: 0 0 10px; }
+
+/* ---------- Ratings & verified-buyer reviews ---------- */
+.stars { color: #e6a100; letter-spacing: 1px; font-size: 1.05rem; white-space: nowrap; }
+.stars .off { color: #b0b0b0; }
+.rating-line { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 0 10px; font-family: Tahoma, sans-serif; color: var(--text-primary); text-decoration: none; }
+.rating-line.big { font-size: 1.1rem; margin-bottom: 14px; }
+.rating-line.big .stars { font-size: 1.4rem; }
+.review-item { padding: 12px 0; border-top: 1px solid var(--border); }
+.review-item .desc-text { margin-top: 6px; }
+.review-form { background: var(--bg-list); border: 2px solid var(--border); border-radius: 4px; padding: 14px; margin-top: 12px; }
+.star-pick { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.star-opt { cursor: pointer; }
+.star-opt input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.star-opt span { display: inline-block; padding: 6px 10px; border: 2px solid var(--border); border-radius: 4px; background: var(--bg-input); color: #e6a100; font-size: 1.05rem; }
+.star-opt input:checked + span { background: #ffff99; border-color: #000080; }
+.star-opt input:focus-visible + span { outline: 3px solid #000080; }
+body.dark-theme .star-opt input:checked + span { background: #5a5a3a; }

@@ -21,7 +21,7 @@ switch ($action) {
         $id = post_int('doc');
         if ($id && !is_bot() && empty($_SESSION['pviewed'][$id]) && db_val("SELECT id FROM documents WHERE id = ? AND status = 'published'", [$id])) {
             $_SESSION['pviewed'][$id] = 1;
-            db_exec('UPDATE documents SET preview_count = preview_count + 1 WHERE id = ?', [$id]);
+            db_exec('UPDATE documents SET preview_count = preview_count + 1, updated_at = updated_at WHERE id = ?', [$id]);
             stat_bump($id, 'preview_views');
         }
         json_out(['ok' => true]);
