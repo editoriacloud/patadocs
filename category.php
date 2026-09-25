@@ -70,6 +70,7 @@ include __DIR__ . '/includes/header.php';
             <?php if (!$res['rows']) { echo '<div class="alert alert-info" style="margin-top:14px;">Looking for something specific? <a href="' . e(page_url('request-document')) . '"><strong>Request a document</strong></a> or <a href="' . e(page_url('contribute')) . '"><strong>contribute one</strong></a>.</div>'; } ?>
         </div>
     </div>
+    <?= $res['rows'] ? ad_slot('category_list', $meta) : '' ?>
     <?php if ($siblings) { ?>
     <div class="panel">
         <div class="panel-header">RELATED CATEGORIES</div>

@@ -175,6 +175,10 @@ function default_settings(): array
         'seo_default_title' => 'PATADOCS | Find the Document You Need',
         'seo_default_description' => "Kenya's document discovery, sharing and download hub. Search schemes of work, exams, CV templates, business plans and more. Preview, pay via M-Pesa and download instantly.",
         'seo_title_suffix' => ' | PATADOCS', 'canonical_urls' => '1', 'sitemap_enabled' => '1', 'og_image' => '', 'force_canonical_host' => '1', 'indexnow_enabled' => '1', 'reviews_auto_approve' => '0',
+        // Ads & Google (Admin → Ads & Google) — ad spaces: ad_{key}_on / _slot / _format / _height / _devices / _code
+        'ads_enabled' => '0', 'ads_publisher_id' => '', 'ads_max_per_page' => '3', 'ads_label' => 'Advertisement', 'ads_preview' => '0',
+        'ads_hide_admins' => '1', 'ads_test_mode' => '0', 'ads_txt_extra' => '', 'ga4_id' => '', 'gtm_id' => '',
+        'google_site_verification' => '', 'bing_site_verification' => '', 'yandex_site_verification' => '', 'pinterest_site_verification' => '',
         // Top bar (Admin → Top Bar)
         'topbar_on' => '0', 'topbar_messages' => '', 'topbar_rotate' => '6', 'topbar_bg' => '#000040', 'topbar_fg' => '#ffffff', 'topbar_accent' => '#ffff66',
         'topbar_dismiss' => '1', 'topbar_pages' => 'all', 'topbar_mobile_contacts' => '0',

@@ -1,7 +1,7 @@
 <?php
 /** PATADOCS — About page (text editable in Admin → Settings → General). */
 require __DIR__ . '/includes/init.php';
-$meta = [
+$meta = [ 'no_ads' => true,
     'title' => 'About ' . setting('site_name'), 'nav' => 'about', 'canonical' => page_url('about'),
     'description' => excerpt(setting('about_text'), 200),
     'schema' => [['@context' => 'https://schema.org', '@type' => 'AboutPage', 'name' => 'About ' . setting('site_name'), 'url' => page_url('about')], breadcrumb_schema([['Home', url('')], ['About', null]])],

@@ -103,6 +103,13 @@ function robots_txt(): string
     $lines[] = 'Disallow: ' . $root . '/search.php?';
     $lines[] = 'Allow: ' . $root . '/uploads/previews/';
     $lines[] = '';
+    // Google's ad crawlers must be able to read every content page (ad relevance + AdSense review); they never index.
+    $lines[] = 'User-agent: Mediapartners-Google';
+    $lines[] = 'Allow: /';
+    $lines[] = '';
+    $lines[] = 'User-agent: AdsBot-Google';
+    $lines[] = 'Allow: /';
+    $lines[] = '';
     if (setting('sitemap_enabled', '1') === '1') { $lines[] = 'Sitemap: ' . url('sitemap.xml'); }
     return implode("\n", $lines) . "\n";
 }

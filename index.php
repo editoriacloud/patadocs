@@ -96,6 +96,7 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php } ?>
 
+    <?= ad_slot('home_mid', $meta) ?>
     <?php if ($featCols) { ?>
     <div class="panel">
         <div class="panel-header orange">FEATURED COLLECTIONS</div>
@@ -156,6 +157,7 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php } ?>
 
+    <?= ad_slot('home_bottom', $meta) ?>
     <div class="cta-banner">
         <h2><?= e(setting('home_cta_title')) ?></h2>
         <p><?= e(setting('home_cta_text')) ?></p>

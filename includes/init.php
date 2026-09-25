@@ -26,6 +26,7 @@ require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/catalog.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/view.php';
+require_once __DIR__ . '/ads.php';
 
 const PD_SCHEMA_VERSION = 6;
 /** Code version — shown in the admin footer and on the payment page, to confirm which files are live on the server. */

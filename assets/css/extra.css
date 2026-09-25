@@ -304,3 +304,24 @@ body.dark-theme .doc-excerpt { border-left-color: #9fcdff; }
 .pay-msg { margin-top: 8px; flex-basis: 100%; }
 .pay-msg:empty { display: none; }
 .btn-classic[aria-busy="true"] { pointer-events: none; }
+
+/* ---------- Ad spaces (includes/ads.php): clearly labelled, reserved height (no layout shift), never inside content ---------- */
+.pd-ad { margin: 6px auto; width: 100%; max-width: 970px; text-align: center; }
+.pd-ad-label { font: 0.7rem Tahoma, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }
+.pd-ad-box { display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.pd-ad-box > ins { width: 100%; }
+.pd-ad-preview { width: 100%; align-self: stretch; display: flex; align-items: center; justify-content: center; border: 2px dashed #b35400; border-radius: 4px; color: var(--text-secondary); font: 0.85rem Tahoma, sans-serif; padding: 10px; }
+@media (max-width: 768px) { .pd-ad-desktop { display: none; } }
+@media (min-width: 769px) { .pd-ad-mobile { display: none; } }
+@media print { .pd-ad { display: none; } }
+
+/* ---------- Legal pages ---------- */
+.legal-text { max-width: 860px; font-family: Tahoma, sans-serif; line-height: 1.75; color: var(--text-primary); }
+.legal-text h2 { font-size: 1.15rem; margin: 22px 0 8px; color: #000080; }
+body.dark-theme .legal-text h2 { color: #9fcdff; }
+.legal-text p { margin: 0 0 10px; }
+.legal-text ul { margin: 0 0 12px 22px; }
+.legal-text li { margin-bottom: 6px; }
+/* AdSense had nothing to show: collapse the space instead of leaving a labelled gap */
+.pd-ad:has(ins[data-ad-status="unfilled"]) { display: none; }
+.pd-ad.is-unfilled { display: none; }

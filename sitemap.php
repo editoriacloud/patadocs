@@ -55,7 +55,7 @@ switch ($part) {
     case 'pages':
         echo $x(url(''), db_val("SELECT MAX(updated_at) FROM documents WHERE status = 'published'"));
         // Only real, indexable pages (recover/saved/payment are noindex and stay out)
-        foreach (['search', 'categories', 'popular', 'contribute', 'request-document', 'about', 'contact'] as $p) { echo $x(page_url($p)); }
+        foreach (['search', 'categories', 'popular', 'contribute', 'request-document', 'about', 'contact', 'privacy-policy', 'terms', 'cookie-policy', 'copyright', 'disclaimer'] as $p) { echo $x(page_url($p)); }
         break;
     case 'categories':
         $counts = cat_counts();

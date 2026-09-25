@@ -2,7 +2,7 @@
 /** PATADOCS — Request a document (form from the design; submitted with AJAX to ajax/public.php). */
 require __DIR__ . '/includes/init.php';
 $q = get_str('q', 200);
-$meta = [
+$meta = [ 'no_ads' => true,
     'title' => 'Request a Document', 'nav' => 'request', 'canonical' => page_url('request-document'),
     'description' => "Can't find the document you need? Request it and our team will source it for you.",
     'schema' => [breadcrumb_schema([['Home', url('')], ['Request a document', null]])],

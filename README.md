@@ -187,11 +187,31 @@ The preview on that page is the real server rendering of the unsaved form.
 The main menu always stays on one line: on narrower screens the less important links (About, Contribute, Request…, Admin Panel) move into a
 **More ▾** dropdown automatically; phones use the ☰ drawer. Order of importance is the 4th value of each entry in `$menu` (includes/header.php).
 
+## 8e. AdSense, Google & legal pages
+**Admin → Ads & Google** — an *AdSense readiness* checklist (publisher ID, HTTPS, root domain, live `ads.txt`, Privacy Policy with the
+Google-cookie disclosures, contact, About text, enough substantial documents, Search Console, sitemap) plus:
+* AdSense publisher ID → adds the `google-adsense-account` verification tag and the AdSense library, and generates `/ads.txt`
+  (if the site is in a sub-folder, paste the shown lines into the domain's root `ads.txt` — Google only reads that one).
+* Ad spaces (on/off, ad-unit slot ID, format, reserved height, desktop/phone, or pasted code): home ×2, document ×2, category, search,
+  collection, popular/categories, above the footer. They sit between content blocks — never in the menu, in pop-ups or near Buy/Download
+  buttons (≥ 900 px away on document pages) — are labelled “Advertisement”, reserve their height (no layout shift), load when scrolled
+  near, collapse when AdSense has no ad, and a page never carries more than *Most ad units on one page* (default 3).
+* No ads (and no AdSense code) on payment, download, recovery, error, admin, form and policy pages, empty search results or any noindex page;
+  signed-in admins see no ads (optional outlines in preview mode); test mode adds `data-adtest="on"`.
+* Google Analytics 4 / Tag Manager with **Consent Mode v2** (EEA, UK, CH start denied — switch on Google's certified consent message in
+  AdSense → Privacy & messaging), and Search Console / Bing / Yandex / Pinterest verification codes (paste the code or the whole meta tag).
+* `robots.txt` lets Google's ad crawlers (Mediapartners-Google, AdsBot-Google) read every content page.
+
+**Admin → Legal pages** — Privacy Policy (with the AdSense-required third-party / Google cookie disclosures and opt-out links, Kenya Data
+Protection Act), Terms of Use, Cookie Policy, Copyright & Takedown, Disclaimer: default texts filled with your site name and contacts,
+editable, linked in every footer and listed in the sitemap.
+
 ## 9. Nginx
 ```nginx
 location / { try_files $uri $uri/ /router.php?path=$uri&$args; }          # clean URLs
 location = /sitemap.xml { rewrite ^ /sitemap.php last; }
 location = /robots.txt  { rewrite ^ /robots.php last; }
+location = /ads.txt     { rewrite ^ /adstxt.php last; }
 location ~ ^/sitemap-([a-z]+)(-([0-9]+))?\.xml$ { rewrite ^ /sitemap.php?part=$1&n=$3 last; }
 location ~ ^/([a-f0-9]{32})\.txt$ { rewrite ^ /indexnow.php?key=$1 last; }
 location ~ ^/(private_documents|includes|uploads/temporary)/ { deny all; }

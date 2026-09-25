@@ -3,7 +3,7 @@
 require __DIR__ . '/includes/init.php';
 $maxMb = max(1, (int)floor(max_upload_bytes('contrib_max_mb') / 1048576));
 $exts = strtoupper(implode(', ', allowed_exts()));
-$meta = [
+$meta = [ 'no_ads' => true,
     'title' => 'Contribute a Resource', 'nav' => 'contribute', 'canonical' => page_url('contribute'),
     'description' => 'Share useful resources with the community. Upload a document for free and help more people find valuable documents.',
     'schema' => [breadcrumb_schema([['Home', url('')], ['Contribute a resource', null]])],

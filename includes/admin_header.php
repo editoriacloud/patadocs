@@ -32,7 +32,7 @@ $nav = [
         ['reviews', 'Reviews', 'reviews.php', 'reports.manage', $badgeCounts['reviews']],
     ],
     'SALES' => [['orders', 'Orders', 'orders.php', 'orders.view', 0], ['payments', 'Payments', 'payments.php', 'payments.view', 0], ['downloads', 'Downloads', 'downloads.php', 'downloads.manage', 0]],
-    'INSIGHTS' => [['analytics', 'Analytics & SEO', 'analytics.php', 'analytics.view', 0]],
+    'INSIGHTS' => [['analytics', 'Analytics & SEO', 'analytics.php', 'analytics.view', 0], ['ads', 'Ads & Google', 'ads.php', 'settings.manage', 0], ['legal', 'Legal pages', 'legal.php', 'settings.manage', 0]],
     'SYSTEM' => [['synonyms', 'Search Synonyms', 'synonyms.php', 'synonyms.manage', 0], ['automation', 'Automation', 'automation.php', 'settings.manage', $badgeCounts['jobs']], ['settings', 'Settings', 'settings.php', 'settings.manage', 0], ['users', 'Admin Users & Roles', 'users.php', 'users.manage', 0], ['profile', 'My Account', 'profile.php', '', 0]],
 ];
 $active = $adm['active'] ?? '';
