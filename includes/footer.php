@@ -4,8 +4,12 @@ $footerLinks = [
     ['Contribute a resource', page_url('contribute')], ['Recover purchase', page_url('recover')],
     ['Saved documents', page_url('saved')], ['Request a document', page_url('request-document')],
     ['Contact', page_url('contact')], ['About', page_url('about')],
+    ['Privacy Policy', page_url('privacy-policy')], ['Terms', page_url('terms')], ['Cookies', page_url('cookie-policy')],
+    ['Copyright', page_url('copyright')], ['Disclaimer', page_url('disclaimer')],
 ];
+if (blog_enabled()) { array_splice($footerLinks, 5, 0, [[setting('blog_title', 'Blog'), blog_url()]]); }
 ?>
+<?= ad_slot('footer', $meta) ?>
 </div><!-- /.aspx-content -->
 
 <!-- ===== FOOTER ===== -->

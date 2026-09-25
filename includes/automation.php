@@ -277,3 +277,19 @@ function job_cleanup(): string
     $out = []; foreach ($n as $k => $v) { if ($v) { $out[] = $v . ' ' . $k; } }
     return $out ? 'Removed/updated: ' . implode(', ', $out) . '.' : 'Nothing to clean.';
 }
+
+/** Scheduled articles that went live since the last run → IndexNow + fresh cached lists. */
+function job_blog(): string
+{
+    if (!blog_enabled()) { return 'Blog is off.'; }
+    $since = (string)(setting('blog_live_checked') ?: date('Y-m-d H:i:s', time() - 900));
+    $now = date('Y-m-d H:i:s');
+    $rows = db_all("SELECT slug, robots_noindex FROM blog_posts WHERE status = 'published' AND published_at > ? AND published_at <= ?", [$since, $now]);
+    set_setting('blog_live_checked', $now);
+    if (!$rows) { return 'No scheduled article went live.'; }
+    cache_flush();
+    $urls = [];
+    foreach ($rows as $r) { if (!(int)$r['robots_noindex']) { $urls[] = post_url($r); } }
+    if ($urls) { require_once __DIR__ . '/indexnow.php'; $urls[] = blog_url(); indexnow_ping($urls); }
+    return count($rows) . ' scheduled article(s) went live' . ($urls ? ' and were sent to IndexNow.' : '.');
+}

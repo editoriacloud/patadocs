@@ -14,10 +14,12 @@ $menu = [
     ['browse', 'Browse Documents', page_url('search'), 1],
     ['categories', 'Categories', page_url('categories'), 2],
     ['popular', 'Popular', page_url('popular'), 3],
+    ['blog', setting('blog_title', 'Blog'), blog_url(), 3],
     ['contribute', 'Contribute', page_url('contribute'), 5],
     ['request', 'Request Document', page_url('request-document'), 4],
     ['about', 'About', page_url('about'), 6],
 ];
+if (!blog_enabled() || setting('blog_in_nav', '1') !== '1') { $menu = array_values(array_filter($menu, function ($m) { return $m[0] !== 'blog'; })); }
 if (setting('show_admin_link', '1') === '1') { $menu[] = ['admin', 'Admin Panel', url('admin/'), 9]; }
 require_once __DIR__ . '/topbar.php';
 $topbar = topbar_config();
@@ -34,14 +36,18 @@ if (setting('jobs_webcron', '1') === '1' && time() - (int)setting('jobs_last_tic
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <meta name="theme-color" content="#000080">
 <?= seo_head($meta) ?>
+<?= google_head_html($meta) ?>
 <meta name="csrf-token" content="<?= e(csrf_token()) ?>">
 <link rel="icon" href="<?= e($favicon) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/extra.css')) ?>">
+<?php if (($meta['nav'] ?? '') === 'blog') { echo '<link rel="stylesheet" href="' . e(asset('css/blog-content.css')) . '">' . "\n"; } ?>
 <?php if (!empty($meta['payment_widget'])) { require_once __DIR__ . '/payment_hub.php'; if (hub_widget_url() !== '') { echo '<script src="' . e(hub_widget_url()) . '" defer></script>' . "\n"; } } ?>
+<?php if (blog_enabled()) { echo '<link rel="alternate" type="application/rss+xml" title="' . e(setting('blog_title', 'Blog') . ' — ' . $siteName) . '" href="' . e(blog_url('feed')) . '">' . "\n"; } ?>
 <?= $meta['head_extra'] ?? '' ?>
 </head>
 <body class="light-theme">
+<?= google_body_html() ?>
 <script>document.documentElement.className+=' js';try{if(localStorage.getItem('patadocs-theme')==='dark'){document.body.className='dark-theme';}}catch(e){}</script>
 <div class="aspx-form" id="form1">
 <?= topbar_visible($topbar, $navKey) ? topbar_html($topbar) : '' ?>

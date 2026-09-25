@@ -58,5 +58,6 @@ include __DIR__ . '/includes/header.php';
             <?= doc_table_html($docs, 'No documents in this collection yet.') ?>
         </div>
     </div>
+    <?= $docs ? ad_slot('collection_list', $meta) : '' ?>
 </section>
 <?php include __DIR__ . '/includes/footer.php'; ?>

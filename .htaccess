@@ -22,6 +22,7 @@ RewriteRule \.(sql|md|log|ini|bak|sh|inc)$ - [F,L]
 
 # --- SEO endpoints (before the real-file rule so they always win) ---
 RewriteRule ^robots\.txt$ robots.php [L]
+RewriteRule ^ads\.txt$ adstxt.php [L]
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
 RewriteRule ^sitemap-([a-z]+)(?:-([0-9]+))?\.xml$ sitemap.php?part=$1&n=$2 [L,QSA]
 RewriteRule ^([a-f0-9]{32})\.txt$ indexnow.php?key=$1 [L]
@@ -31,8 +32,11 @@ RewriteCond %{REQUEST_FILENAME} -f [OR]
 RewriteCond %{REQUEST_FILENAME} -d
 RewriteRule ^ - [L]
 
+# --- Blog: /blog/, /blog/<post>, /blog/category/<slug>, /blog/tag/<slug>, /blog/author/<user>, /blog/feed ---
+RewriteRule ^blog(?:/(.*))?$ blog.php?route=$1 [L,QSA]
+
 # --- Top level pages: /search /about /contribute ... ---
-RewriteRule ^(search|categories|popular|contribute|request-document|about|contact|recover|saved|payment|payment-success|download)/?$ $1.php [L,QSA]
+RewriteRule ^(search|categories|popular|contribute|request-document|about|contact|recover|saved|payment|payment-success|download|privacy-policy|terms|cookie-policy|copyright|disclaimer)/?$ $1.php [L,QSA]
 
 # --- Everything else → router (categories, documents, collections) ---
 RewriteRule ^(.+)$ router.php?path=$1 [L,QSA]

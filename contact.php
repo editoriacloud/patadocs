@@ -1,7 +1,7 @@
 <?php
 /** PATADOCS — Contact page. */
 require __DIR__ . '/includes/init.php';
-$meta = [
+$meta = [ 'no_ads' => true,
     'title' => 'Contact Us', 'nav' => '', 'canonical' => page_url('contact'),
     'description' => 'Contact ' . setting('site_name') . ' for support, copyright concerns, partnerships or feedback.',
     'schema' => [['@context' => 'https://schema.org', '@type' => 'ContactPage', 'name' => 'Contact ' . setting('site_name'), 'url' => page_url('contact')], breadcrumb_schema([['Home', url('')], ['Contact', null]])],

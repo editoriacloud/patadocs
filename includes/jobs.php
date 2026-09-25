@@ -20,6 +20,7 @@ function jobs_registry(): array
         'seo'      => ['Auto-SEO', 'Fills missing meta descriptions and keywords from the document itself, and rebuilds the search index.', 60, 'job_seo'],
         'previews' => ['Preview generation', 'Builds missing watermarked previews for published documents.', 60, 'job_previews'],
         'reviews'  => ['Review requests', 'Emails buyers two days after purchase asking them to rate their documents.', 60, 'job_review_requests'],
+        'blog'     => ['Scheduled articles', 'When a scheduled blog article goes live: tells search engines (IndexNow) and refreshes the blog lists.', 10, 'job_blog'],
         'vocab'    => ['Search vocabulary', 'Learns the words used in titles, tags and categories so search can fix spelling mistakes ("Did you mean…").', 720, 'job_vocab'],
         'digest'   => ['Daily report email', 'Sends the admin yesterday\'s sales, top searches, searches with no results (demand you can fill) and pending work.', 1440, 'job_digest'],
         'cleanup'  => ['Housekeeping', 'Removes expired rate limits, old logs and temporary files; expires old download links.', 1440, 'job_cleanup'],

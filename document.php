@@ -182,6 +182,7 @@ include __DIR__ . '/includes/header.php';
         </div>
     </div>
 
+    <?= ad_slot('doc_content', $meta) ?>
     <?php if ($reviews) { ?>
     <div class="panel" id="reviews">
         <div class="panel-header">REVIEWS FROM VERIFIED BUYERS</div>
@@ -197,6 +198,7 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php } ?>
 
+    <?= ad_slot('doc_related', $meta) ?>
     <?php if ($related) { ?>
     <div class="panel">
         <div class="panel-header">RELATED DOCUMENTS</div>

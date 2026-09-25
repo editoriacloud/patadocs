@@ -34,5 +34,6 @@ include __DIR__ . '/includes/header.php';
         <div class="panel-body"><div class="tree"><?= $walk($tree) ?></div></div>
     </div>
     <?php } ?>
+    <?= ad_slot('list_pages', $meta) ?>
 </section>
 <?php include __DIR__ . '/includes/footer.php'; ?>

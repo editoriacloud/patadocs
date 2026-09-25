@@ -175,6 +175,14 @@ function default_settings(): array
         'seo_default_title' => 'PATADOCS | Find the Document You Need',
         'seo_default_description' => "Kenya's document discovery, sharing and download hub. Search schemes of work, exams, CV templates, business plans and more. Preview, pay via M-Pesa and download instantly.",
         'seo_title_suffix' => ' | PATADOCS', 'canonical_urls' => '1', 'sitemap_enabled' => '1', 'og_image' => '', 'force_canonical_host' => '1', 'indexnow_enabled' => '1', 'reviews_auto_approve' => '0',
+        // Ads & Google (Admin → Ads & Google) — ad spaces: ad_{key}_on / _slot / _format / _height / _devices / _code
+        'ads_enabled' => '0', 'ads_publisher_id' => '', 'ads_max_per_page' => '3', 'ads_label' => 'Advertisement', 'ads_preview' => '0',
+        'ads_hide_admins' => '1', 'ads_test_mode' => '0', 'ads_txt_extra' => '', 'ga4_id' => '', 'gtm_id' => '',
+        'google_site_verification' => '', 'bing_site_verification' => '', 'yandex_site_verification' => '', 'pinterest_site_verification' => '',
+        // Blog (Admin → Blog → Settings)
+        'blog_enabled' => '1', 'blog_title' => 'Blog', 'blog_seo_title' => '', 'blog_description' => '', 'blog_per_page' => '10', 'blog_in_nav' => '1',
+        'blog_on_home' => '1', 'blog_home_count' => '3', 'blog_comments' => '1', 'blog_comments_auto' => '0', 'blog_notify_comments' => '1',
+        'blog_index_tags' => '0', 'blog_ad_after_paragraph' => '4', 'blog_auto_related_docs' => '1', 'blog_image_mb' => '5', 'blog_revisions_keep' => '25',
         // Top bar (Admin → Top Bar)
         'topbar_on' => '0', 'topbar_messages' => '', 'topbar_rotate' => '6', 'topbar_bg' => '#000040', 'topbar_fg' => '#ffffff', 'topbar_accent' => '#ffff66',
         'topbar_dismiss' => '1', 'topbar_pages' => 'all', 'topbar_mobile_contacts' => '0',
@@ -292,7 +300,7 @@ function reserved_slugs(): array
 {
     return ['admin', 'ajax', 'assets', 'includes', 'uploads', 'private_documents', 'search', 'contribute', 'about', 'contact',
         'download', 'payment', 'payment-success', 'collection', 'collections', 'recover', 'saved', 'popular', 'categories',
-        'request-document', 'sitemap', 'sitemap.xml', 'robots.txt', 'install', 'index', 'router', 'document', 'category', 'tag', 'error'];
+        'request-document', 'blog', 'feed', 'sitemap', 'sitemap.xml', 'robots.txt', 'install', 'index', 'router', 'document', 'category', 'tag', 'error'];
 }
 
 // ---- Phone numbers (Kenya) -------------------------------------------------------

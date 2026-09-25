@@ -25,5 +25,6 @@ include __DIR__ . '/includes/header.php';
             <div id="searchZone"><?= search_zone_html($o, $res) ?></div>
         </div>
     </div>
+    <?= $res['total'] > 0 ? ad_slot('search_results', $meta) : '' ?>
 </section>
 <?php include __DIR__ . '/includes/footer.php'; ?>

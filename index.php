@@ -96,6 +96,7 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php } ?>
 
+    <?= ad_slot('home_mid', $meta) ?>
     <?php if ($featCols) { ?>
     <div class="panel">
         <div class="panel-header orange">FEATURED COLLECTIONS</div>
@@ -110,6 +111,17 @@ include __DIR__ . '/includes/header.php';
                 </a>
                 <?php } ?>
             </div>
+        </div>
+    </div>
+    <?php } ?>
+
+    <?php $homePosts = (blog_enabled() && setting('blog_on_home', '1') === '1') ? blog_posts(blog_live_sql() . ' AND p.robots_noindex = 0', [], max(1, min(9, (int)setting('blog_home_count', '3')))) : [];
+    if ($homePosts) { ?>
+    <div class="panel">
+        <div class="panel-header">LATEST FROM THE <?= e(strtoupper(setting('blog_title', 'Blog'))) ?></div>
+        <div class="panel-body">
+            <div class="blog-grid blog-grid-3"><?php foreach ($homePosts as $p) { echo blog_card_html($p); } ?></div>
+            <p style="text-align:right; margin:10px 0 0;"><a class="btn-classic btn-sm" href="<?= e(blog_url()) ?>">ALL ARTICLES →</a></p>
         </div>
     </div>
     <?php } ?>
@@ -156,6 +168,7 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php } ?>
 
+    <?= ad_slot('home_bottom', $meta) ?>
     <div class="cta-banner">
         <h2><?= e(setting('home_cta_title')) ?></h2>
         <p><?= e(setting('home_cta_text')) ?></p>

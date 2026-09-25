@@ -71,7 +71,10 @@ function seo_head(array $m): string
     if (($m['og_type'] ?? '') === 'article') {
         if (!empty($m['published'])) { $h .= '<meta property="article:published_time" content="' . e(date('c', strtotime($m['published']))) . "\">\n"; }
         if (!empty($m['modified'])) { $h .= '<meta property="article:modified_time" content="' . e(date('c', strtotime($m['modified']))) . "\">\n"; }
+        if (!empty($m['article_section'])) { $h .= '<meta property="article:section" content="' . e($m['article_section']) . "\">\n"; }
+        foreach (array_slice((array)($m['article_tags'] ?? []), 0, 10) as $tg) { $h .= '<meta property="article:tag" content="' . e($tg) . "\">\n"; }
     }
+    if (!empty($m['author_name'])) { $h .= '<meta name="author" content="' . e($m['author_name']) . "\">\n"; }
     $h .= "<meta name=\"twitter:card\" content=\"summary_large_image\">\n";
     $h .= '<meta name="twitter:title" content="' . e($ogTitle) . "\">\n";
     $h .= '<meta name="twitter:description" content="' . e($desc) . "\">\n";
@@ -102,6 +105,13 @@ function robots_txt(): string
     $lines[] = 'Disallow: ' . $root . '/search?';
     $lines[] = 'Disallow: ' . $root . '/search.php?';
     $lines[] = 'Allow: ' . $root . '/uploads/previews/';
+    $lines[] = '';
+    // Google's ad crawlers must be able to read every content page (ad relevance + AdSense review); they never index.
+    $lines[] = 'User-agent: Mediapartners-Google';
+    $lines[] = 'Allow: /';
+    $lines[] = '';
+    $lines[] = 'User-agent: AdsBot-Google';
+    $lines[] = 'Allow: /';
     $lines[] = '';
     if (setting('sitemap_enabled', '1') === '1') { $lines[] = 'Sitemap: ' . url('sitemap.xml'); }
     return implode("\n", $lines) . "\n";

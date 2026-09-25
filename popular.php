@@ -24,5 +24,6 @@ include __DIR__ . '/includes/header.php';
             <?= pager_html($pg, page_url('popular')) ?>
         </div>
     </div>
+    <?= ad_slot('list_pages', $meta) ?>
 </section>
 <?php include __DIR__ . '/includes/footer.php'; ?>

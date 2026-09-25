@@ -75,6 +75,28 @@
         layout();
     })();
 
+    /* ---------------- Ad spaces (Admin → Ads & Google): fill each unit only when it comes near the screen ---------------- */
+    (function () {
+        var units = $$('.pd-ad ins.adsbygoogle');
+        if (!units.length) { return; }
+        var fill = function (ins) {
+            if (ins.getAttribute('data-pd-filled')) { return; }
+            if (ins.offsetParent === null) { return; }                       // hidden on this device (desktop/mobile-only space)
+            ins.setAttribute('data-pd-filled', '1');
+            try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { }
+            // Browsers without :has(): collapse the space once AdSense reports it has no ad for it
+            if (window.MutationObserver) {
+                var mo = new MutationObserver(function () { if (ins.getAttribute('data-ad-status') === 'unfilled') { var box = ins.closest('.pd-ad'); if (box) { box.classList.add('is-unfilled'); } mo.disconnect(); } });
+                mo.observe(ins, { attributes: true, attributeFilter: ['data-ad-status'] });
+            }
+        };
+        if (!('IntersectionObserver' in window)) { units.forEach(fill); return; }
+        var io = new IntersectionObserver(function (entries) {
+            entries.forEach(function (en) { if (en.isIntersecting) { io.unobserve(en.target); fill(en.target); } });
+        }, { rootMargin: '400px 0px' });
+        units.forEach(function (u) { io.observe(u); });
+    })();
+
     /* ---------------- Top bar: rotating announcements + close (managed in Admin → Top Bar) ---------------- */
     (function () {
         var bar = $('#pdTopbar');
@@ -516,6 +538,29 @@
             if (menu) { menu.classList.remove('open'); } if (hamburger) { hamburger.classList.remove('active'); }
         }
     });
+
+    /* ---------------- Blog comments: reply buttons + posting without leaving the page ---------------- */
+    var cForm = $('#blogCommentForm');
+    if (cForm) {
+        var cParent = $('#commentParent'), cTitle = $('#commentFormTitle'), cCancel = $('#commentCancelReply'), cMsg = $('.pay-msg', cForm);
+        var resetReply = function () { cParent.value = '0'; cTitle.textContent = 'LEAVE A COMMENT'; cCancel.classList.add('hidden'); };
+        document.addEventListener('click', function (e) {
+            var b = e.target.closest('.blog-reply-btn'); if (!b) { return; }
+            cParent.value = b.getAttribute('data-reply'); cTitle.textContent = 'REPLY TO ' + String(b.getAttribute('data-name') || '').toUpperCase();
+            cCancel.classList.remove('hidden'); cForm.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(function () { $('#cBody').focus(); }, 300);
+        });
+        cCancel.addEventListener('click', resetReply);
+        cForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var btn = $('[type=submit]', cForm), old = btn.innerHTML;
+            btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Posting…';
+            api(cForm.getAttribute('action'), { method: 'POST', data: new FormData(cForm) }).then(function (r) {
+                btn.disabled = false; btn.innerHTML = old;
+                cMsg.innerHTML = '<div class="alert alert-' + (r.ok ? 'success' : 'error') + '">' + esc(r.message || 'Something went wrong.') + '</div>';
+                if (r.ok) { $('#cBody').value = ''; resetReply(); }
+            });
+        });
+    }
 
     /* Focus the search box on desktop like the design does (home only) */
     if (window.innerWidth > 768 && $('[data-search-id="home"] .search-input')) { setTimeout(function () { $('[data-search-id="home"] .search-input').focus(); }, 400); }
