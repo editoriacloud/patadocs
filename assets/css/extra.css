@@ -300,15 +300,7 @@ body.dark-theme .doc-excerpt { border-left-color: #9fcdff; }
 }
 .tb-preview-box { border: 2px dashed var(--border); border-radius: 4px; overflow: hidden; }
 
-/* ---------- Payment waiting screen (assets/js/app.js → waitForPayment) ---------- */
-.pay-price { font-size: 1.5rem; font-weight: bold; color: #005a00; }
-body.dark-theme .pay-price { color: #5f5; }
-.pay-wait { border-bottom: none; }
-.pay-head { font-size: 1.1rem; line-height: 1.5; margin-bottom: 10px; }
-.pay-state { padding: 10px 12px; background: var(--bg-list); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 12px; min-height: 2.6em; }
-.pay-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.pay-actions .modal-btn { flex: 1 1 200px; text-decoration: none; text-align: center; }
-.pay-claim { margin-bottom: 10px; }
-.pay-claim summary { cursor: pointer; font-weight: bold; padding: 6px 0; }
-.pay-claim-row { display: flex; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
-.pay-claim-row input { flex: 1 1 160px; font: bold 1.1rem 'Courier New', monospace; text-transform: uppercase; letter-spacing: 1px; padding: 8px 10px; background: var(--bg-input); color: var(--text-primary); border: 2px solid var(--border); border-radius: 4px; }
+/* ---------- Buy buttons → Editoria Payment Hub widget (assets/js/app.js → buy / openWidget) ---------- */
+.pay-msg { margin-top: 8px; flex-basis: 100%; }
+.pay-msg:empty { display: none; }
+.btn-classic[aria-busy="true"] { pointer-events: none; }

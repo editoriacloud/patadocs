@@ -1,18 +1,20 @@
 <?php
 /**
- * PATADOCS — payment page (works with or without JavaScript).
- *   payment.php?doc=ID | ?col=ID   → phone form (creates the order + its Payment Hub invoice)
- *   payment.php?o=ORDER&k=KEY      → pay (EditoriaPay modal, or the Hub's hosted page without JS) and
- *                                    live status of the order (polls until the Hub confirms)
+ * PATADOCS — payment page, following the Editoria Payment Hub's documented flow:
+ *   payment.php?doc=ID | ?col=ID  → item + Pay button. With JavaScript the button opens the Hub's widget
+ *                                  (EditoriaPay.open); without it, the order is created and the buyer goes to the
+ *                                  Hub's hosted payment page.
+ *   payment.php?o=ORDER&k=KEY     → the order's status as the Hub reports it (GET /payment-intents/{id}/status,
+ *                                  checked server-side). Paid → the download page. Nothing else unlocks an order.
  */
 require __DIR__ . '/includes/init.php';
 require_once __DIR__ . '/includes/payment_hub.php';
 
-// ---- Order status view ---------------------------------------------------------------
+// ---- Order status (follows the Hub) --------------------------------------------------------
 if (get_str('o', 20) !== '') {
     $order = order_by_code(strtoupper(get_str('o', 20)));
     if (!$order || !order_key_ok($order, get_str('k', 64))) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
-    $order = order_refresh($order);
+    $order = order_refresh($order, true);                           // ask the Hub now
     if ($order['status'] === 'paid') { redirect(url('payment-success.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key']))); }
     $docBack = $order['document_id'] ? (($d = doc_get((int)$order['document_id'])) ? doc_url($d) : url('')) : ($order['collection_id'] ? (($c = db_row('SELECT * FROM collections WHERE id = ?', [$order['collection_id']])) ? collection_url($c) : url('')) : url(''));
     $pending = $order['status'] === 'pending';
@@ -27,30 +29,17 @@ if (get_str('o', 20) !== '') {
                 <div class="result-row"><strong>Order ID:</strong> <span class="mono"><?= e($order['order_code']) ?></span></div>
                 <div class="result-row"><strong>Item:</strong> <?= e($order['item_title']) ?></div>
                 <div class="result-row"><strong>Amount:</strong> <?= e(money($order['amount'])) ?></div>
-                <div class="result-row"><strong>Phone:</strong> <?= e('0' . substr($order['phone'], 3, 3) . ' *** ' . substr($order['phone'], -3)) ?></div>
             </div>
             <div id="payState" style="margin-top:16px;">
             <?php if ($pending) { ?>
-                <div id="payLive"><div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for payment.</strong> <?= $order['stk_sent_at'] ? 'An M-Pesa prompt was sent to your phone — enter your PIN.' : 'Pay with the button below.' ?> This page updates by itself the moment M-Pesa confirms.</div></div>
-            <?php } ?>
-            <?php if ($pending || in_array($order['status'], ['failed', 'expired'], true)) { $act = e(url('ajax/payment-action.php')); ?>
+                <div id="payLive"><div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for the Payment Hub to confirm your payment.</strong> This page updates by itself the moment it does.</div></div>
                 <div class="form-actions">
-                    <form method="post" action="<?= $act ?>" style="margin:0;"><?= csrf_field() ?><input type="hidden" name="action" value="resend"><input type="hidden" name="o" value="<?= e($order['order_code']) ?>"><input type="hidden" name="k" value="<?= e($order['access_key']) ?>">
-                        <button type="submit" class="btn-classic success" style="font-size:1.05rem;">📲 SEND M-PESA PROMPT<?= $order['stk_count'] ? ' AGAIN' : '' ?></button></form>
-                    <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic hidden" id="hubPayBtn">🏦 PAY BY PAYBILL / OTHER WAY</button><?php } ?>
+                    <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic success hidden" id="hubPayBtn" style="font-size:1.1rem;">PAY <?= e(money($order['amount'])) ?></button><?php } ?>
                     <?php if ($hostedUrl) { ?><a class="btn-classic" id="hubPayLink" href="<?= e($hostedUrl) ?>" rel="noopener">Open the secure payment page</a><?php } ?>
                 </div>
-                <form method="post" action="<?= $act ?>" class="pd-form" style="margin-top:14px;"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="o" value="<?= e($order['order_code']) ?>"><input type="hidden" name="k" value="<?= e($order['access_key']) ?>">
-                    <label for="pReceipt"><strong>Already paid?</strong> Enter the M-Pesa code from your confirmation SMS:</label>
-                    <div class="pay-claim-row"><input type="text" id="pReceipt" name="receipt" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. TXA1B2C3D4" required>
-                        <button type="submit" class="btn-classic primary">CONFIRM PAYMENT</button></div>
-                    <p class="help">We check the code with M-Pesa before unlocking — it must be the payment for this order.</p>
-                </form>
-            <?php } ?>
-            <?php if ($pending) { ?>
                 <noscript><meta http-equiv="refresh" content="10"></noscript>
             <?php } else { ?>
-                <div class="alert alert-error">❌ <?= $order['status'] === 'expired' ? 'This payment request expired.' : 'The payment was not completed.' ?> You have not been charged unless M-Pesa confirmed a payment.</div>
+                <div class="alert alert-error">❌ <?= $order['status'] === 'expired' ? 'This payment request expired.' : ($order['status'] === 'refunded' ? 'This order was refunded.' : 'The payment was not completed.') ?> You have not been charged unless M-Pesa confirmed a payment.</div>
                 <a class="btn-classic primary" href="<?= e($docBack) ?>">↩ TRY AGAIN</a>
                 <a class="btn-classic" href="<?= e(page_url('recover')) ?>">🧾 I ALREADY PAID</a>
             <?php } ?>
@@ -61,7 +50,7 @@ if (get_str('o', 20) !== '') {
     include __DIR__ . '/includes/footer.php'; exit;
 }
 
-// ---- Purchase form (start a payment) ----------------------------------------------------
+// ---- Item + Pay button ---------------------------------------------------------------------
 $type = get_int('col') > 0 ? 'collection' : 'doc';
 $item = null;
 if ($type === 'collection') {
@@ -74,13 +63,13 @@ if ($type === 'collection') {
 if (!$item) { abort_page(404, 'Nothing to pay for', 'This item is free or no longer available.', [['🔍 SEARCH DOCUMENTS', page_url('search')], ['🏠 HOME', url('')]]); }
 
 $error = '';
-if (is_post()) {
+if (is_post()) {                                                   // no JavaScript: go to the Hub's hosted payment page
     csrf_check();
-    $r = checkout_start($type, $item['id'], post_str('phone', 20), post_str('email', 190), post_str('name', 120));
-    if ($r['ok']) { redirect(url('payment.php?o=' . rawurlencode($r['order']) . '&k=' . rawurlencode($r['key']))); }
+    $r = checkout_start($type, $item['id']);
+    if ($r['ok']) { redirect($r['pay_url'] !== '' ? $r['pay_url'] : url('payment.php?o=' . rawurlencode($r['order']) . '&k=' . rawurlencode($r['key']))); }
     $error = $r['message'];
 }
-$meta = ['title' => 'Pay for ' . $item['title'], 'robots' => 'noindex,nofollow', 'nav' => ''];
+$meta = ['title' => 'Pay for ' . $item['title'], 'robots' => 'noindex,nofollow', 'nav' => '', 'payment_widget' => true];
 include __DIR__ . '/includes/header.php';
 ?>
 <section class="page-section active" id="page-pay">
@@ -92,12 +81,9 @@ include __DIR__ . '/includes/header.php';
             <div class="price-row"><span class="k">TOTAL:</span><span class="v"><?= e(money($item['price'])) ?></span></div></div>
         <form class="pd-form" method="post">
             <?= csrf_field() ?>
-            <div class="form-grid">
-                <div class="frow"><label for="pPhone">M-Pesa phone number <span class="req">*</span></label><input type="tel" id="pPhone" name="phone" required placeholder="07XX XXX XXX" value="<?= e(post_str('phone', 20)) ?>" autocomplete="tel"></div>
-                <div class="frow"><label for="pEmail">Email (optional)</label><input type="email" id="pEmail" name="email" placeholder="for your receipt" value="<?= e(post_str('email', 190)) ?>"></div>
-            </div>
-            <p class="help" style="margin-top:10px;">No account needed. On the next step, pay in the secure M-Pesa window (STK prompt or PayBill). Your download unlocks automatically once the payment is confirmed.</p>
-            <div class="form-actions"><button type="submit" class="btn-classic success" style="font-size:1.1rem;">PAY <?= e(money($item['price'])) ?></button><a class="btn-classic" href="<?= e($item['back']) ?>">CANCEL</a></div>
+            <p class="help">No account needed. Pay with M-Pesa (STK prompt or PayBill) in the secure Editoria payment window. Your download unlocks as soon as the payment is confirmed.</p>
+            <div class="form-actions"><button type="submit" class="btn-classic success" style="font-size:1.1rem;" data-pay-type="<?= e($type) ?>" data-pay-id="<?= (int)$item['id'] ?>">PAY <?= e(money($item['price'])) ?></button><a class="btn-classic" href="<?= e($item['back']) ?>">CANCEL</a></div>
+            <div class="pay-msg help" role="status" aria-live="polite"></div>
         </form>
     </div></div>
 </section>

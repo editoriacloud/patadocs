@@ -6,7 +6,7 @@ require_once __DIR__ . '/includes/reviews.php';
 
 $order = order_by_code(strtoupper(get_str('o', 20)));
 if (!$order || !order_key_ok($order, get_str('k', 64))) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
-$order = order_refresh($order);                                   // never trust the browser: ask the Hub if still pending
+$order = order_refresh($order, true);                             // never trust the browser: ask the Hub (payment-intents/{id}/status) now
 if ($order['status'] !== 'paid') { redirect(url('payment.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key']))); }
 $links = order_download_links($order);
 $toReview = review_pending_docs($order);

@@ -89,18 +89,15 @@ Webhook → POST /ajax/webhook.php
 (`$meta['payment_widget']`). Without JavaScript, `payment.php` links to the Hub's hosted payment page instead.
 Response field names are mapped in one function, `hub_normalize()` in `includes/payment_hub.php`.
 
-**Instant STK + never stuck (v4):** with *Settings → Payment Hub → Send the M-Pesa prompt instantly* on, the server creates the invoice and
-calls `POST /api/v1/payment-intents/{id}/stk` in the same request — the phone rings ~0.3 s after *Pay*. The buyer then sees one waiting
-screen: status checked every 1.5 s, **Resend prompt** (max 4, 20 s apart), **Pay by PayBill / other way** (the Hub window), and
-**Already paid? Enter the M-Pesa code**. The screen stops after 3 minutes with clear next steps — it never spins forever.
-An order is marked paid by whichever arrives first: the signed webhook, the status check (`/payment-intents/{id}/status`, falling back to
-`/payment-intents/{id}`), the 5-minute reconciliation job, or the buyer's M-Pesa code — verified server-side with `POST /payments/verify` +
-`GET /transactions/{receipt}`. A code unlocks an order only if the transaction references that order (order code / intent / invoice), or —
-for a PayBill payment with a wrong account number — came from the order's own phone number, is not linked to another invoice and was made after
-the order; the amount must cover the price; a code works once; guesses are rate limited.
-**Scopes needed** on the Hub application: `invoices.write`, `payments.create`, `payments.read`, `payments.verify` —
-*Test connection* checks each one without side effects. **Admin → Payments → Hub API log** shows every call to the Hub and its reply
-(tokens and phone numbers masked); rejected webhooks are listed under *Webhook events* with the reason (e.g. `bad_signature`).
+**Flow (exactly as the Hub documents it):** *Buy* → PATADOCS creates the invoice server-side (`POST /api/v1/invoices`,
+Idempotency-Key = order code) → the page opens the Hub's widget with `EditoriaPay.open({ token: payment_intent.id })` (without JavaScript:
+the Hub's hosted payment page). The widget collects the phone number and runs STK / PayBill. PATADOCS grants access only when the Hub says
+the payment is confirmed — the signed `payment.confirmed` webhook, or `GET /api/v1/payment-intents/{id}/status` asked server-side (by the
+download page, the order status page and the 5-minute reconciliation job). `onSuccess` in the browser only sends the buyer to the download
+page, which checks the Hub first. The payer's number from the Hub is kept on the order for *Recover purchase*.
+**Scopes needed:** `invoices.write`, `payments.read` — *Settings → Payment Hub → Test connection* checks both.
+**Admin → Payments → Hub API log** shows every call to the Hub and its reply (tokens and phone numbers masked); rejected webhooks are listed
+under *Webhook events* with the reason (e.g. `bad_signature`).
 
 **Payment security (all enforced server-side):** browser "success" is never trusted · order code, amount, currency and payment intent are
 validated · an M-Pesa receipt can belong to only one order · a repeat click reuses the unpaid order and its invoice (and the Idempotency-Key

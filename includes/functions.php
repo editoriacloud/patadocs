@@ -181,7 +181,7 @@ function default_settings(): array
         // Automation (Admin → Automation)
         'jobs_webcron' => '1', 'auto_seo' => '1', 'content_excerpt_words' => '80', 'reviews_ask' => '1', 'reviews_ask_days' => '2', 'digest_on' => '1', 'digest_email' => '',
         // Payment Hub
-        'hub_url' => 'https://payments.editoriaweb.co.ke', 'hub_stk_direct' => '1', 'hub_client_id' => '', 'hub_client_secret' => '', 'hub_webhook_secret' => '',
+        'hub_url' => 'https://payments.editoriaweb.co.ke', 'hub_client_id' => '', 'hub_client_secret' => '', 'hub_webhook_secret' => '',
         'hub_timeout' => '20', 'hub_token' => '', 'hub_token_expires' => '0',   // hub_token*: cached bearer token, managed by the code
         // Security / limits
         'session_timeout' => '60', 'max_login_attempts' => '5', 'lockout_minutes' => '15',
