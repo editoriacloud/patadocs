@@ -292,6 +292,8 @@ CREATE TABLE IF NOT EXISTS orders (
   status        ENUM('pending','paid','failed','expired','refunded') NOT NULL DEFAULT 'pending',
   mpesa_receipt VARCHAR(30) NULL,
   hub_reference VARCHAR(100) NULL,
+  stk_count     TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  stk_sent_at   DATETIME NULL,
   search_log_id BIGINT UNSIGNED NULL,
   ip            VARCHAR(45) NULL,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -620,4 +622,20 @@ CREATE TABLE IF NOT EXISTS search_vocab (
   KEY idx_vocab_lookup (first, len)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '3') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+-- PAYMENTS DIAGNOSTICS — schema version 4
+CREATE TABLE IF NOT EXISTS hub_log (
+  id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  method      VARCHAR(8) NOT NULL,
+  path        VARCHAR(190) NOT NULL,
+  status      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+  duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+  order_code  VARCHAR(20) NULL,
+  error       VARCHAR(255) NULL,
+  response    TEXT NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_hub_log_created (created_at),
+  KEY idx_hub_log_order (order_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '4') ON DUPLICATE KEY UPDATE setting_value = setting_value;

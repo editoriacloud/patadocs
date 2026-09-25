@@ -150,7 +150,30 @@ switch ($action) {
         if ($h['status'] === 0) { $fail('Could not reach the Payment Hub at ' . hub_base() . ': ' . $h['error']); }
         hub_token_forget();
         if (hub_token() === '') { $fail('The Hub is reachable but rejected the Client ID / Client secret (POST /api/v1/auth/token). Copy them again from the Hub\'s Applications page.'); }
-        $ok('Connected: the Payment Hub is reachable and issued an access token for your credentials.' . (setting('hub_webhook_secret') === '' ? ' ⚠ Add the webhook secret too — without it payments are only confirmed by polling.' : ''));
+        // Permission probes with requests that cannot change anything: an empty invoice (rejected by validation) and a
+        // payment intent / receipt that does not exist. 403 = the scope is missing; 4xx other than 401/403 = allowed.
+        $probe = function ($method, $path, $payload, $label, $scope, $why) {
+            $r = hub_request($method, $path, $payload, '', 'DIAGNOSTIC', 12);
+            $state = $r['status'] === 403 ? 'missing' : (($r['status'] >= 200 && $r['status'] < 500 && $r['status'] !== 401) ? 'ok' : 'unknown');
+            return ['label' => $label, 'scope' => $scope, 'state' => $state, 'status' => $r['status'], 'why' => $why];
+        };
+        $checks = [
+            $probe('POST', '/invoices', [], 'Create invoices', 'invoices.write', 'needed to start any payment'),
+            $probe('POST', '/payment-intents/patadocs-diagnostic/stk', ['phone' => '254700000000'], 'Send STK prompts', 'payments.create', 'the instant M-Pesa prompt'),
+            $probe('GET', '/payment-intents/patadocs-diagnostic/status', null, 'Read payment status', 'payments.read', 'confirming payments when a webhook is late or lost'),
+            $probe('GET', '/transactions?per_page=1', null, 'Look up transactions', 'payments.read', '“I already paid” M-Pesa code check'),
+            $probe('POST', '/payments/verify', ['receipt' => 'PDDIAG0000'], 'Force reconciliation', 'payments.verify', 'speeds up the M-Pesa code check'),
+        ];
+        $lines = []; $missing = 0;
+        foreach ($checks as $c) {
+            $lines[] = ($c['state'] === 'ok' ? '✔ ' : ($c['state'] === 'missing' ? '✖ ' : '? ')) . $c['label'] . ' (' . $c['scope'] . ')' . ($c['state'] === 'ok' ? '' : ' — HTTP ' . $c['status'] . ($c['state'] === 'missing' ? ': ask the Hub admin to grant this scope — ' . $c['why'] : ''));
+            if ($c['state'] === 'missing') { $missing++; }
+        }
+        if (setting('hub_webhook_secret') === '') { $lines[] = '⚠ No webhook secret: payments are only confirmed by status checks (slower). Add it from the Hub → Webhooks.'; }
+        $lastBad = db_val("SELECT result FROM webhook_events WHERE signature_ok = 0 AND created_at > NOW() - INTERVAL 1 DAY ORDER BY id DESC LIMIT 1");
+        if ($lastBad) { $lines[] = '⚠ Webhooks were rejected in the last 24 h (' . $lastBad . '): the webhook secret here must match the one on the Hub.'; }
+        $msg = 'Connected: the Hub is reachable and accepted your credentials.' . "\n" . implode("\n", $lines);
+        $missing ? $fail($msg) : $ok($msg);
 
     // ---- System ----------------------------------------------------------------------------------------
     case 'rebuild_search':

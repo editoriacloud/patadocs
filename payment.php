@@ -31,11 +31,23 @@ if (get_str('o', 20) !== '') {
             </div>
             <div id="payState" style="margin-top:16px;">
             <?php if ($pending) { ?>
-                <div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for payment.</strong> Pay in the secure M-Pesa window (STK prompt or PayBill). This page updates automatically once the payment is confirmed.</div>
+                <div id="payLive"><div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for payment.</strong> <?= $order['stk_sent_at'] ? 'An M-Pesa prompt was sent to your phone — enter your PIN.' : 'Pay with the button below.' ?> This page updates by itself the moment M-Pesa confirms.</div></div>
+            <?php } ?>
+            <?php if ($pending || in_array($order['status'], ['failed', 'expired'], true)) { $act = e(url('ajax/payment-action.php')); ?>
                 <div class="form-actions">
-                    <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic success hidden" id="hubPayBtn" style="font-size:1.1rem;">PAY <?= e(money($order['amount'])) ?></button><?php } ?>
-                    <?php if ($hostedUrl) { ?><a class="btn-classic<?= $order['hub_reference'] ? '' : ' success' ?>" id="hubPayLink" href="<?= e($hostedUrl) ?>" rel="noopener">Open the secure payment page</a><?php } ?>
+                    <form method="post" action="<?= $act ?>" style="margin:0;"><?= csrf_field() ?><input type="hidden" name="action" value="resend"><input type="hidden" name="o" value="<?= e($order['order_code']) ?>"><input type="hidden" name="k" value="<?= e($order['access_key']) ?>">
+                        <button type="submit" class="btn-classic success" style="font-size:1.05rem;">📲 SEND M-PESA PROMPT<?= $order['stk_count'] ? ' AGAIN' : '' ?></button></form>
+                    <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic hidden" id="hubPayBtn">🏦 PAY BY PAYBILL / OTHER WAY</button><?php } ?>
+                    <?php if ($hostedUrl) { ?><a class="btn-classic" id="hubPayLink" href="<?= e($hostedUrl) ?>" rel="noopener">Open the secure payment page</a><?php } ?>
                 </div>
+                <form method="post" action="<?= $act ?>" class="pd-form" style="margin-top:14px;"><?= csrf_field() ?><input type="hidden" name="action" value="claim"><input type="hidden" name="o" value="<?= e($order['order_code']) ?>"><input type="hidden" name="k" value="<?= e($order['access_key']) ?>">
+                    <label for="pReceipt"><strong>Already paid?</strong> Enter the M-Pesa code from your confirmation SMS:</label>
+                    <div class="pay-claim-row"><input type="text" id="pReceipt" name="receipt" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. TXA1B2C3D4" required>
+                        <button type="submit" class="btn-classic primary">CONFIRM PAYMENT</button></div>
+                    <p class="help">We check the code with M-Pesa before unlocking — it must be the payment for this order.</p>
+                </form>
+            <?php } ?>
+            <?php if ($pending) { ?>
                 <noscript><meta http-equiv="refresh" content="10"></noscript>
             <?php } else { ?>
                 <div class="alert alert-error">❌ <?= $order['status'] === 'expired' ? 'This payment request expired.' : 'The payment was not completed.' ?> You have not been charged unless M-Pesa confirmed a payment.</div>

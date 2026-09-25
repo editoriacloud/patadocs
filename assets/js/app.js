@@ -121,7 +121,8 @@
         return mDyn;
     }
     function showMessage(msg, title) {
-        openModal(title || 'NOTIFICATION', '<div class="modal-section" style="border-bottom:none;"><div style="font-size:1.3rem; padding:12px 0; text-align:center;">' + esc(msg) + '</div></div>');
+        var multi = String(msg).indexOf('\n') !== -1;          // multi-line reports (e.g. Payment Hub test) read left-aligned
+        openModal(title || 'NOTIFICATION', '<div class="modal-section" style="border-bottom:none;"><div style="font-size:' + (multi ? '1rem; line-height:1.7; text-align:left;' : '1.3rem; text-align:center;') + ' padding:12px 0;">' + esc(msg).replace(/\n/g, '<br>') + '</div></div>');
     }
     window.PDUI = { openModal: openModal, closeModal: closeModal, showMessage: showMessage, api: api, esc: esc };
 
@@ -374,13 +375,13 @@
             '<div class="modal-section"><span class="modal-section-title">📄 ' + (item.type === 'collection' ? 'BUNDLE' : 'DOCUMENT') + '</span>' +
             '<div class="modal-row"><label>Title:</label><span style="font-weight:bold;">' + esc(item.title) + '</span></div>' +
             (item.format ? '<div class="modal-row"><label>Format:</label><span>' + esc(item.format) + '</span></div>' : '') +
-            '<div class="modal-row"><label>Price:</label><span style="font-size:1.5rem; font-weight:bold; color:#008000;">' + esc(item.price) + '</span></div></div>' +
+            '<div class="modal-row"><label>Price:</label><span class="pay-price">' + esc(item.price) + '</span></div></div>' +
             '<div class="modal-section"><span class="modal-section-title">📱 M-PESA PHONE NUMBER</span><div class="result-area">' +
             '<div class="result-row"><label>Phone:</label><input type="tel" id="mpesaPhone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" value="' + esc(phone) + '" style="font-size:1.2rem; width:200px;"></div>' +
             '<div class="result-row"><label>Email:</label><input type="email" id="mpesaEmail" placeholder="optional — for your receipt" style="font-size:1rem; width:260px;"></div>' +
             '<button type="button" class="modal-btn modal-btn-success" id="sendStkBtn" style="font-size:1.1rem; margin-top:10px;">PAY ' + esc(item.price) + '</button>' +
             '<div id="stkStatus" style="margin-top:14px; font-size:1.1rem;"></div></div>' +
-            '<div class="help" style="margin-top:10px;">No account needed. The secure M-Pesa window opens next (STK prompt or PayBill). Keep your Order ID to recover your download later.</div></div>',
+            '<div class="help" style="margin-top:10px;">No account needed. An M-Pesa prompt comes to this phone straight away — enter your PIN and your download unlocks. You can also pay by PayBill.</div></div>',
             { total: item.price });
         var pb = $('#sendStkBtn'); if ($('#mpesaPhone')) { $('#mpesaPhone').focus(); }
         pb.addEventListener('click', startPayment);
@@ -388,24 +389,23 @@
     function startPayment() {
         var status = $('#stkStatus'), btn = $('#sendStkBtn'), phone = $('#mpesaPhone').value.trim();
         if (!/^(\+?254|0)?[17]\d{8}$/.test(phone.replace(/[\s-]/g, ''))) { status.innerHTML = '⚠️ Enter a valid Safaricom number, e.g. 0712 345 678'; return; }
-        btn.disabled = true; status.innerHTML = '<span class="spinner"></span> Preparing your secure payment...';
+        btn.disabled = true; status.innerHTML = '<span class="spinner"></span> Sending the M-Pesa prompt to your phone...';
         try { localStorage.setItem('patadocs-phone', phone); } catch (e) { }
         api(PD.base + 'ajax/payment.php', { data: { type: payItem.type, id: payItem.id, phone: phone, email: ($('#mpesaEmail') || {}).value || '' } }).then(function (r) {
+            btn.disabled = false;
             if (!r.ok) {
-                btn.disabled = false;
                 status.innerHTML = '❌ ' + esc(r.message || 'Could not start the payment.') + (r.recover ? ' <a href="' + esc(PD.pages.recover) + '">Recover purchase</a>' : '');
                 return;
             }
-            btn.disabled = false;
-            openHubPayment(r);
+            if (r.stk === true) { waitForPayment(r, 'stk'); return; }            // phone is ringing: wait here
+            openHubPayment(r, r.stk === false ? r.message : '');               // prompt failed / direct STK off: Hub window
         });
     }
     /**
-     * Opens the Payment Hub's modal for a pending order ({order, key, token, pay_url, status_url}).
-     * onSuccess / onClose from the modal are only hints: the order is unlocked after the server has
-     * confirmed the payment with the Hub (webhook or status check), which poll() waits for.
+     * The Hub's own payment window (PayBill instructions, other options). Its callbacks are only hints: a receipt it
+     * reports is verified server-side with the Hub, and the order unlocks only after the server has confirmed it.
      */
-    function openHubPayment(r) {
+    function openHubPayment(r, note) {
         if (!window.EditoriaPay || !r.token) {                     // widget blocked or not loaded → Hub's hosted page / our status page
             window.location.href = r.pay_url || r.status_url;
             return;
@@ -413,32 +413,95 @@
         closeModal();
         window.EditoriaPay.open({
             token: r.token,
-            onSuccess: function () { confirmPayment(r, '<span class="spinner"></span> Confirming your payment...'); },
-            onClose: function () { confirmPayment(r, '<span class="spinner"></span> Checking your payment... If you paid by PayBill, this can take a few seconds.'); }
+            onSuccess: function (data) { waitForPayment(r, 'confirming'); if (data && data.receipt) { claimReceipt(r, String(data.receipt), true); } },
+            onClose: function () { waitForPayment(r, 'closed', note); }
         });
     }
-    function confirmPayment(r, msg) {
+
+    var payGen = 0;                                                 // a newer waiting screen stops older poll loops
+    /** One waiting screen for every route to payment: STK prompt, PayBill, the Hub window, or an M-Pesa code. */
+    function waitForPayment(r, mode, note) {
+        var gen = ++payGen, t0 = Date.now(), sentAt = mode === 'stk' ? Date.now() : 0;
+        var head = mode === 'stk' ? '📱 <strong>Check your phone' + (r.phone ? ' (' + esc(r.phone) + ')' : '') + '</strong> and enter your M-Pesa PIN to pay <strong>' + esc(r.amount || '') + '</strong>.'
+            : mode === 'confirming' ? '<strong>Confirming your payment…</strong>' : (note ? '⚠️ ' + esc(note) + '<br>' : '') + 'Waiting for your M-Pesa payment.';
         openModal('SECURE M-PESA PAYMENT',
-            '<div class="modal-section" style="border-bottom:none;"><div id="stkStatus" style="font-size:1.1rem; padding:8px 0;">' + msg + '</div>' +
-            '<div class="help">Order ID: <strong>' + esc(r.order) + '</strong></div></div>',
-            { okText: 'PAY NOW', onOk: function () { openHubPayment(r); } });
-        poll(r.order, r.key, Date.now(), $('#stkStatus'), null, r);
+            '<div class="modal-section pay-wait"><div class="pay-head">' + head + '</div>' +
+            '<div id="payWait" class="pay-state" aria-live="polite"><span class="spinner"></span> Waiting for M-Pesa confirmation…</div>' +
+            '<div class="pay-actions">' +
+            '<button type="button" class="modal-btn" id="payResend">📲 Resend prompt</button>' +
+            (window.EditoriaPay && r.token ? '<button type="button" class="modal-btn" id="payOther">🏦 Pay by PayBill / other way</button>' : (r.pay_url ? '<a class="modal-btn" href="' + esc(r.pay_url) + '">🏦 Pay by PayBill / other way</a>' : '')) +
+            '</div>' +
+            '<details class="pay-claim"' + (mode === 'closed' ? ' open' : '') + '><summary>Already paid? Enter the M-Pesa code from your SMS</summary>' +
+            '<div class="pay-claim-row"><input type="text" id="payReceipt" maxlength="12" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. TXA1B2C3D4" aria-label="M-Pesa code">' +
+            '<button type="button" class="modal-btn modal-btn-success" id="payClaim">CONFIRM</button></div><div id="payClaimMsg" class="help"></div></details>' +
+            '<div class="help">Order ID: <strong>' + esc(r.order) + '</strong> — keep it to recover your download.</div></div>',
+            { okText: 'CHECK NOW', onOk: function () { tick(true); }, closeText: 'CLOSE' });
+        var box = $('#payWait'), resend = $('#payResend');
+        var lockResend = function () {
+            if (!sentAt) { return; }
+            resend.disabled = true;
+            var left = function () { var s = 20 - Math.round((Date.now() - sentAt) / 1000); if (gen !== payGen) { return; } if (s > 0) { resend.textContent = '📲 Resend prompt (' + s + ')'; setTimeout(left, 1000); } else { resend.disabled = false; resend.textContent = '📲 Resend prompt'; } };
+            left();
+        };
+        lockResend();
+        resend.addEventListener('click', function () {
+            resend.disabled = true;
+            api(PD.base + 'ajax/payment-action.php', { data: { action: 'resend', o: r.order, k: r.key } }).then(function (x) {
+                box.innerHTML = (x.ok ? '📱 ' : '⚠️ ') + esc(x.message || '');
+                if (x.ok) { sentAt = Date.now(); t0 = Date.now(); lockResend(); tick(false); } else { resend.disabled = false; }
+            });
+        });
+        if ($('#payOther')) { $('#payOther').addEventListener('click', function () { openHubPayment(r); }); }
+        $('#payClaim').addEventListener('click', function () { claimReceipt(r, $('#payReceipt').value, false); });
+        $('#payReceipt').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('#payClaim').click(); } });
+
+        var busy = false;
+        var tick = function (manual) {
+            if (gen !== payGen || busy) { return; }
+            if (manual) { t0 = Date.now(); }
+            busy = true;
+            api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(r.order) + '&k=' + encodeURIComponent(r.key)).then(function (x) {
+                busy = false;
+                if (gen !== payGen) { return; }
+                if (x.status === 'paid') { payGen++; x.key = r.key; box.innerHTML = '✅ Payment confirmed!' + (x.receipt ? ' M-Pesa ' + esc(x.receipt) : ''); setTimeout(function () { showSuccess(x); }, 500); return; }
+                var age = Date.now() - t0;
+                if (x.status === 'failed' && age < 150000) {
+                    box.innerHTML = '⚠️ The M-Pesa prompt was cancelled or timed out. Press <strong>Resend prompt</strong>, or pay by PayBill.';
+                } else if (x.status === 'expired' || x.status === 'refunded') {
+                    box.innerHTML = '❌ ' + esc(x.message || 'This payment request has expired.') + ' <a href="#" id="payRestart">Start again</a>';
+                    var rs = $('#payRestart'); if (rs && payItem) { rs.addEventListener('click', function (e) { e.preventDefault(); showPayment(payItem); }); }
+                    return;
+                } else if (x.status === 'pending' || x.status === 'failed') {
+                    box.innerHTML = '<span class="spinner"></span> Waiting for M-Pesa confirmation… <span class="muted">(' + Math.round(age / 1000) + 's)</span>';
+                } else if (x.ok === false) {
+                    box.innerHTML = '⚠️ Connection problem — retrying…';
+                }
+                if (age > 180000) {                                   // never an endless spinner: stop and say what to do
+                    box.innerHTML = '⏳ We have not received the M-Pesa confirmation yet. If money left your account, enter the M-Pesa code below — or press <strong>Check now</strong>.';
+                    var d = $('.pay-claim'); if (d) { d.open = true; }
+                    return;
+                }
+                // Checking a paid order costs nothing (no Hub call); the server itself asks the Hub at most every 3 s.
+                setTimeout(function () { tick(false); }, age < 90000 ? 1500 : 4000);
+            });
+        };
+        setTimeout(function () { tick(false); }, mode === 'stk' ? 1500 : 600);
     }
-    function poll(order, key, t0, status, btn, r0) {
-        if (!document.body.contains(status)) { return; }          // modal was closed or replaced → stop polling
-        api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(order) + '&k=' + encodeURIComponent(key)).then(function (r) {
-            if (r.status === 'paid') { status.innerHTML = '✅ Payment Confirmed!' + (r.receipt ? '<br>M-PESA Receipt: ' + esc(r.receipt) : ''); r.key = key; setTimeout(function () { showSuccess(r); }, 900); return; }
-            if (r.status === 'failed' || r.status === 'expired' || r.status === 'refunded') {
-                if (btn) { btn.disabled = false; }
-                if (r0 && payItem) { mOk.textContent = 'TRY AGAIN'; mOk.onclick = function () { showPayment(payItem); }; }   // that invoice is dead: start a new order
-                status.innerHTML = '❌ ' + esc(r.message || 'Payment was not completed.') + ' You can try again.'; return;
-            }
-            if (Date.now() - t0 > (r0 ? 45000 : 150000)) {
-                if (btn) { btn.disabled = false; }
-                status.innerHTML = '⏳ Still waiting for M-Pesa. If you already paid, <a href="' + esc(PD.base + 'payment.php?o=' + encodeURIComponent(order) + '&k=' + encodeURIComponent(key)) + '"><strong>check your payment status</strong></a>.';
+
+    /** "Already paid": the server verifies the M-Pesa code with the Hub before anything is unlocked. */
+    function claimReceipt(r, code, silent) {
+        code = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        var msg = $('#payClaimMsg'), btn = $('#payClaim');
+        if (!/^[A-Z0-9]{8,12}$/.test(code)) { if (msg && !silent) { msg.textContent = 'Enter the 10-character code from your M-Pesa SMS, e.g. TXA1B2C3D4.'; } return; }
+        if (btn) { btn.disabled = true; } if (msg && !silent) { msg.textContent = 'Checking with M-Pesa…'; }
+        api(PD.base + 'ajax/payment-action.php', { data: { action: 'claim', o: r.order, k: r.key, receipt: code } }).then(function (x) {
+            if (btn) { btn.disabled = false; }
+            if (x.ok) {
+                payGen++;
+                api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(r.order) + '&k=' + encodeURIComponent(r.key)).then(function (s) { if (s.status === 'paid') { s.key = r.key; showSuccess(s); } });
                 return;
             }
-            setTimeout(function () { poll(order, key, t0, status, btn, r0); }, 3000);
+            if (msg && !silent) { msg.textContent = '❌ ' + (x.message || 'We could not confirm that code.'); }
         });
     }
     function showSuccess(r) {
@@ -448,7 +511,7 @@
                 '<a class="modal-btn modal-btn-success" href="' + esc(d.url) + '" style="font-size:1.1rem; width:100%; margin-top:10px; box-sizing:border-box;">⬇ DOWNLOAD NOW</a></div>';
         });
         openModal('✅ PAYMENT SUCCESSFUL',
-            '<div class="modal-section" style="text-align:center;"><div style="font-size:4rem; color:#008000; margin-bottom:12px;">✓</div>' +
+            '<div class="modal-section" style="text-align:center;"><div style="font-size:4rem; color:#005a00; margin-bottom:12px;" aria-hidden="true">✓</div>' +
             '<div style="font-size:1.6rem; font-weight:bold; margin-bottom:8px;">Payment Successful!</div>' +
             '<div style="font-size:1.1rem; color:#404040; margin-bottom:18px;">Your document is ready.</div>' + links +
             '<div style="margin-top:12px; font-size:1rem; color:#666;">Your download will start automatically...</div>' +
@@ -470,7 +533,7 @@
     /* Payment page (payment.php): poll until paid, then go to the success page */
     var payPage = $('#payPage');
     if (payPage) {
-        var st = $('#payState'), po = payPage.getAttribute('data-order'), pk = payPage.getAttribute('data-key'), t0 = Date.now();
+        var st = $('#payLive') || $('#payState'), po = payPage.getAttribute('data-order'), pk = payPage.getAttribute('data-key'), t0 = Date.now();
         var hubPayBtn = $('#hubPayBtn'), ptoken = payPage.getAttribute('data-token');
         var initPayBtn = function () {                     // widget.js is deferred: it exists by DOMContentLoaded
             if (!hubPayBtn || !ptoken || !window.EditoriaPay) { return; }
@@ -483,9 +546,10 @@
         var tick = function () {
             api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk)).then(function (r) {
                 if (r.status === 'paid') { window.location.href = PD.base + 'payment-success.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); return; }
-                if (r.status === 'failed' || r.status === 'expired' || r.status === 'refunded') { st.innerHTML = '<div class="alert alert-error">❌ ' + esc(r.message || 'Payment was not completed.') + '</div>'; return; }
-                if (Date.now() - t0 > 600000) { st.innerHTML = '<div class="alert alert-warn">Still pending. Refresh this page to check again.</div>'; return; }
-                setTimeout(tick, 3000);
+                if (r.status === 'expired' || r.status === 'refunded') { st.innerHTML = '<div class="alert alert-error">❌ ' + esc(r.message || 'Payment was not completed.') + '</div>'; return; }
+                var age = Date.now() - t0;
+                if (age > 300000) { st.innerHTML = '<div class="alert alert-warn">⏳ No confirmation from M-Pesa yet. If you already paid, enter your M-Pesa code below, or <a href="">check again</a>.</div>'; return; }
+                setTimeout(tick, age < 90000 ? 1500 : 4000);
             });
         };
         tick();

@@ -53,6 +53,24 @@ function db_migrate(): void
             ['documents', 'content_status', "ALTER TABLE documents ADD COLUMN content_status ENUM('none','ok','empty','unsupported','failed') NOT NULL DEFAULT 'none' AFTER content_text"],
             ['orders', 'review_asked_at', "ALTER TABLE orders ADD COLUMN review_asked_at DATETIME NULL AFTER paid_at"],
         ],
+        4 => [   // payments: Hub API call log (diagnostics) + STK prompt tracking (resend limits)
+            "CREATE TABLE IF NOT EXISTS hub_log (
+              id          BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+              method      VARCHAR(8) NOT NULL,
+              path        VARCHAR(190) NOT NULL,
+              status      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+              duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
+              order_code  VARCHAR(20) NULL,
+              error       VARCHAR(255) NULL,
+              response    TEXT NULL,
+              created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (id),
+              KEY idx_hub_log_created (created_at),
+              KEY idx_hub_log_order (order_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+            ['orders', 'stk_count', "ALTER TABLE orders ADD COLUMN stk_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER hub_reference"],
+            ['orders', 'stk_sent_at', "ALTER TABLE orders ADD COLUMN stk_sent_at DATETIME NULL AFTER stk_count"],
+        ],
     ];
     $current = (int)setting('schema_version', 1);
     foreach ($steps as $version => $sqls) {
