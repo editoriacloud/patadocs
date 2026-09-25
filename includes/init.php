@@ -27,7 +27,9 @@ require_once __DIR__ . '/catalog.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/view.php';
 
-const PD_SCHEMA_VERSION = 5;
+const PD_SCHEMA_VERSION = 6;
+/** Code version — shown in the admin footer and on the payment page, to confirm which files are live on the server. */
+const PD_VERSION = '2026.09.25-pay7';
 if ((int)setting('schema_version', 1) < PD_SCHEMA_VERSION) { require_once __DIR__ . '/migrate.php'; db_migrate(); }
 
 security_boot();

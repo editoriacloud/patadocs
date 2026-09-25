@@ -296,7 +296,7 @@ CREATE TABLE IF NOT EXISTS orders (
   stk_sent_at   DATETIME NULL,
   invoice_ref   VARCHAR(100) NULL,
   hub_invoice_id VARCHAR(100) NULL,
-  hub_status    VARCHAR(60) NULL,
+  hub_status    VARCHAR(255) NULL,
   hub_note      VARCHAR(255) NULL,
   search_log_id BIGINT UNSIGNED NULL,
   ip            VARCHAR(45) NULL,
@@ -644,4 +644,4 @@ CREATE TABLE IF NOT EXISTS hub_log (
   KEY idx_hub_log_order (order_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '5') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '6') ON DUPLICATE KEY UPDATE setting_value = setting_value;

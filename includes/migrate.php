@@ -82,6 +82,9 @@ function db_migrate(): void
             "UPDATE orders o JOIN (SELECT order_id, MAX(hub_reference) inv FROM payments WHERE hub_reference IS NOT NULL GROUP BY order_id) p ON p.order_id = o.id
                SET o.hub_invoice_id = COALESCE(o.hub_invoice_id, p.inv), o.invoice_ref = COALESCE(o.invoice_ref, p.inv)",
         ],
+        6 => [   // the Hub's own words (or the exact reason a check failed) are shown to the buyer
+            "ALTER TABLE orders MODIFY hub_status VARCHAR(255) NULL",
+        ],
     ];
     $current = (int)setting('schema_version', 1);
     foreach ($steps as $version => $sqls) {

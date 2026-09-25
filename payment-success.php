@@ -6,8 +6,10 @@ require_once __DIR__ . '/includes/reviews.php';
 
 $order = order_from_request($_GET);
 if (!$order) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
-$order = order_refresh($order, true);                             // never trust the browser: ask the Hub (payment-intents/{id}/status) now
-if ($order['status'] !== 'paid') { redirect(url('payment.php?' . order_qs($order))); }
+$receipt = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', get_str('r', 20)));   // M-Pesa receipt from the widget's onSuccess — a hint only
+if ($receipt !== '' && $order['status'] !== 'paid' && order_confirm_receipt($order, $receipt) === 'paid') { $order = order_get((int)$order['id']); }
+$order = order_refresh($order, true);                             // never trust the browser: ask the Hub (invoice + payment status) now
+if ($order['status'] !== 'paid') { redirect(url('payment.php?' . order_qs($order) . ($receipt !== '' ? '&r=' . rawurlencode($receipt) : ''))); }
 $links = order_download_links($order);
 $toReview = review_pending_docs($order);
 $meta = ['title' => 'Payment Successful', 'robots' => 'noindex,nofollow', 'nav' => ''];
