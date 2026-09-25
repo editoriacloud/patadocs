@@ -35,7 +35,7 @@ if (setting('jobs_webcron', '1') === '1' && time() - (int)setting('jobs_last_tic
 <link rel="icon" href="<?= e($favicon) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/extra.css')) ?>">
-<?php if (!empty($meta['payment_widget'])) { require_once __DIR__ . '/payment_hub.php'; if (hub_widget_url() !== '') { echo '<script src="' . e(hub_widget_url()) . '"></script>' . "\n"; } } ?>
+<?php if (!empty($meta['payment_widget'])) { require_once __DIR__ . '/payment_hub.php'; if (hub_widget_url() !== '') { echo '<script src="' . e(hub_widget_url()) . '" defer></script>' . "\n"; } } ?>
 <?= $meta['head_extra'] ?? '' ?>
 </head>
 <body class="light-theme">

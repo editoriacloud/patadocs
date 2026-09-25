@@ -14,6 +14,7 @@
         html {
             overflow-x: hidden;
         }
+        html:has(> body.dark-theme) { background: #2a2a2a; }
 
         html, body {
             background: #c0c0c0;
@@ -24,6 +25,7 @@
         }
 
         body {
+            background: var(--bg-main);     /* the dark theme's page background was defined but never applied */
             display: flex;
             flex-direction: column;
             min-height: 100vh;
@@ -79,7 +81,7 @@
             --bg-row-alt: #4a4a4a;
             --bg-total: #3a3a3a;
             --text-primary: #e0e0e0;
-            --text-secondary: #aaa;
+            --text-secondary: #ccc;         /* ≥ 4.5:1 on every dark panel */
             --shadow: #1a1a1a;
             --border: #555;
             --header-bg: linear-gradient(90deg, #1a1a5e, #1a4a7a);
@@ -108,10 +110,10 @@
         body.dark-theme .gv-table td { background: #444; color: #e0e0e0; border-color: #555; }
         body.dark-theme .gv-table tr:nth-child(even) td { background: #4a4a4a; }
         body.dark-theme .gv-table tr:hover td { background: #5a5a3a; }
-        body.dark-theme .gv-table .doc-title { color: #6aafff; }
+        body.dark-theme .gv-table .doc-title { color: #9fcdff; }
         body.dark-theme .gv-table .doc-price { color: #5f5; }
         body.dark-theme .stat-box { background: #3a3a3a; border-color: #555; }
-        body.dark-theme .stat-box .stat-value { color: #6aafff; }
+        body.dark-theme .stat-box .stat-value { color: #9fcdff; }
         body.dark-theme .stat-box .stat-value.green { color: #5f5; }
         body.dark-theme .preview-watermark { color: rgba(255,255,255,0.06); }
         body.dark-theme .preview-page { background: #3a3a3a; border-color: #555; }
@@ -119,7 +121,7 @@
         body.dark-theme .modal-box { background: #3a3a3a; }
         body.dark-theme .modal-box .modal-header { background: linear-gradient(90deg, #1a1a5e, #1a4a7a, #1a1a5e); }
         body.dark-theme .modal-box .modal-body { background: #4a4a4a; color: #e0e0e0; }
-        body.dark-theme .modal-box .modal-body .modal-section-title { color: #6aafff; }
+        body.dark-theme .modal-box .modal-body .modal-section-title { color: #9fcdff; }
         body.dark-theme .modal-btn { background: #4a4a4a; color: #e0e0e0; }
         body.dark-theme .modal-btn:hover { background: #5a5a5a; }
         body.dark-theme .result-area { background: #3a3a3a; }
@@ -335,7 +337,7 @@
             border-color: #0000cc;
             box-shadow: 0 0 0 5px rgba(0,0,200,0.15);
         }
-        body.dark-theme .search-wrap { border-color: #6aafff; }
+        body.dark-theme .search-wrap { border-color: #9fcdff; }
         body.dark-theme .search-wrap:focus-within {
             border-color: #aaddff;
             box-shadow: 0 0 0 5px rgba(106,175,255,0.2);
@@ -349,7 +351,7 @@
             justify-content: center;
             flex-shrink: 0;
         }
-        body.dark-theme .search-icon-big { color: #6aafff; }
+        body.dark-theme .search-icon-big { color: #9fcdff; }
         .search-wrap input {
             flex: 1;
             padding: 18px 6px;
@@ -466,7 +468,7 @@
             word-break: break-word;
             line-height: 1.3;
         }
-        body.dark-theme .suggestion-item .sug-title { color: #6aafff; }
+        body.dark-theme .suggestion-item .sug-title { color: #9fcdff; }
         .suggestion-item .sug-meta {
             font-size: 0.85rem;
             color: var(--text-secondary);
@@ -477,7 +479,7 @@
         .suggestion-item .sug-price {
             font-weight: bold;
             font-size: 1rem;
-            color: #008000;
+            color: #005a00;
             flex-shrink: 0;
             white-space: nowrap;
         }
@@ -571,7 +573,7 @@
             text-shadow: 1px 1px 0 rgba(255,255,255,0.5);
             line-height: 1.2;
         }
-        body.dark-theme .hero-title { color: #6aafff; }
+        body.dark-theme .hero-title { color: #9fcdff; }
         .hero-subtitle {
             font-size: 1.2rem;
             color: var(--text-secondary);
@@ -613,7 +615,7 @@
             margin-bottom: 6px;
             font-family: Tahoma, sans-serif;
         }
-        body.dark-theme .feature-card .feature-title { color: #6aafff; }
+        body.dark-theme .feature-card .feature-title { color: #9fcdff; }
         .feature-card .feature-desc {
             font-size: 1rem;
             color: var(--text-secondary);
@@ -643,7 +645,7 @@
             color: #000080;
             font-family: 'Courier New', monospace;
         }
-        body.dark-theme .stats-strip .strip-value { color: #6aafff; }
+        body.dark-theme .stats-strip .strip-value { color: #9fcdff; }
         .stats-strip .strip-label {
             font-size: 0.9rem;
             color: var(--text-secondary);
@@ -679,7 +681,7 @@
             font-size: 1rem;
             font-family: Tahoma, sans-serif;
         }
-        body.dark-theme .testimonial .author { color: #6aafff; }
+        body.dark-theme .testimonial .author { color: #9fcdff; }
         .testimonial .role {
             font-size: 0.9rem;
             color: var(--text-secondary);
@@ -694,7 +696,7 @@
             text-align: center;
             color: #fff;
         }
-        .cta-banner h3 {
+        .cta-banner h2 {
             font-size: 1.8rem;
             font-weight: bold;
             margin-bottom: 10px;
@@ -750,8 +752,8 @@
         .gv-table tr:hover td { background: #ffff99; }
         body.dark-theme .gv-table tr:hover td { background: #5a5a3a; }
         .gv-table .doc-title { font-weight: bold; color: #000080; }
-        body.dark-theme .gv-table .doc-title { color: #6aafff; }
-        .gv-table .doc-price { font-weight: bold; color: #008000; }
+        body.dark-theme .gv-table .doc-title { color: #9fcdff; }
+        .gv-table .doc-price { font-weight: bold; color: #005a00; }
         body.dark-theme .gv-table .doc-price { color: #5f5; }
         .gv-table .doc-format { font-size: 0.9rem; color: var(--text-secondary); }
 
@@ -824,9 +826,9 @@
         }
         .btn-classic.danger:hover { background: #dd0000; }
         .btn-classic.warning {
-            background: #e67e22;
+            background: #b35400;            /* was #e67e22: white text needs 4.5:1 contrast */
             color: #fff;
-            border-color: #f39c12;
+            border-color: #d9731a;
             border-right-color: #a04000;
             border-bottom-color: #a04000;
         }
@@ -855,13 +857,13 @@
             margin-top: 6px;
             transition: color 0.3s;
         }
-        body.dark-theme .stat-box .stat-value { color: #6aafff; }
-        .stat-box .stat-value.green { color: #008000; }
+        body.dark-theme .stat-box .stat-value { color: #9fcdff; }
+        .stat-box .stat-value.green { color: #005a00; }
         body.dark-theme .stat-box .stat-value.green { color: #5f5; }
         .stat-box .stat-trend {
             font-size: 0.9rem;
             font-weight: bold;
-            color: #008000;
+            color: #005a00;
         }
         .stat-box .stat-trend.down { color: #cc0000; }
 
@@ -893,7 +895,7 @@
             color: #000080;
             margin-bottom: 6px;
         }
-        body.dark-theme .cat-tile .cat-name { color: #6aafff; }
+        body.dark-theme .cat-tile .cat-name { color: #9fcdff; }
         .cat-tile .cat-count {
             font-size: 0.9rem;
             color: var(--text-secondary);
@@ -1074,7 +1076,7 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
         }
-        body.dark-theme .modal-box .modal-body .modal-section-title { color: #6aafff; }
+        body.dark-theme .modal-box .modal-body .modal-section-title { color: #9fcdff; }
         .modal-box .modal-body .modal-row {
             display: flex;
             align-items: center;
@@ -1091,7 +1093,7 @@
         .modal-box .modal-body .modal-total-display {
             font-size: 1.7rem;
             font-weight: bold;
-            color: #008000;
+            color: #005a00;
             transition: color 0.3s;
             font-family: 'Courier New', monospace;
         }
@@ -1230,7 +1232,7 @@
             .testimonial-grid { grid-template-columns: 1fr; }
             .stats-strip { grid-template-columns: 1fr 1fr; }
             .stats-strip .strip-value { font-size: 1.5rem; }
-            .cta-banner h3 { font-size: 1.3rem; }
+            .cta-banner h2 { font-size: 1.3rem; }
             .cta-banner p { font-size: 0.95rem; }
             .feature-card { padding: 18px 14px; }
             .panel .panel-header { font-size: 1.2rem; padding: 12px 16px; }

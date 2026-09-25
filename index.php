@@ -157,7 +157,7 @@ include __DIR__ . '/includes/header.php';
     <?php } ?>
 
     <div class="cta-banner">
-        <h3><?= e(setting('home_cta_title')) ?></h3>
+        <h2><?= e(setting('home_cta_title')) ?></h2>
         <p><?= e(setting('home_cta_text')) ?></p>
         <a class="btn-classic" href="<?= e(page_url('request-document')) ?>">📝 REQUEST A DOCUMENT</a>
     </div>

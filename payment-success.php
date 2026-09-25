@@ -16,7 +16,7 @@ include __DIR__ . '/includes/header.php';
 <section class="page-section active" id="page-paid">
     <div class="panel"><div class="panel-header green">✅ PAYMENT SUCCESSFUL</div>
     <div class="panel-body" style="max-width:720px; text-align:center;">
-        <div style="font-size:4rem; color:#008000; margin-bottom:12px;">✓</div>
+        <div style="font-size:4rem; color:#005a00; margin-bottom:12px;" aria-hidden="true">✓</div>
         <div style="font-size:1.6rem; font-weight:bold; font-family:Tahoma, sans-serif; margin-bottom:8px;">Payment Successful!</div>
         <div style="font-size:1.1rem; color:var(--text-secondary); margin-bottom:18px;">Your document is ready.</div>
         <?php foreach ($links as $l) { ?>
