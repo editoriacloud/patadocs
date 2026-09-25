@@ -380,7 +380,10 @@
         if (!window.EditoriaPay || !r.token) { window.location.href = r.pay_url || r.status_url; return; }   // widget blocked → Hub's hosted page
         window.EditoriaPay.open({
             token: r.token,
-            onSuccess: function () { window.location.href = PD.base + 'payment-success.php' + orderQs(r); },
+            onSuccess: function (data) {                              // receipt = a hint the server verifies with the Hub
+                var rc = data && data.receipt ? String(data.receipt).replace(/[^A-Za-z0-9]/g, '') : '';
+                window.location.href = PD.base + 'payment-success.php' + orderQs(r) + (rc ? '&r=' + encodeURIComponent(rc) : '');
+            },
             onClose: function () {                                   // closed: ask the Hub once — paid by PayBill meanwhile?
                 api(PD.base + 'ajax/payment-status.php' + orderQs(r)).then(function (x) {
                     if (x.status === 'paid') { window.location.href = PD.base + 'payment-success.php' + orderQs(r); return; }
@@ -410,18 +413,18 @@
     /* Payment page (payment.php): poll until paid, then go to the success page */
     var payPage = $('#payPage');
     if (payPage) {
-        var st = $('#payLive') || $('#payState'), po = payPage.getAttribute('data-ref'), pk = payPage.getAttribute('data-key'), t0 = Date.now();
+        var st = $('#payLive') || $('#payState'), po = payPage.getAttribute('data-ref'), prc = payPage.getAttribute('data-receipt') || '', pk = payPage.getAttribute('data-key'), t0 = Date.now();
         var hubPayBtn = $('#hubPayBtn'), ptoken = payPage.getAttribute('data-token');
         var initPayBtn = function () {                     // widget.js is deferred: it exists by DOMContentLoaded
             if (!hubPayBtn || !ptoken || !window.EditoriaPay) { return; }
             hubPayBtn.classList.remove('hidden');
             hubPayBtn.addEventListener('click', function () {
-                window.EditoriaPay.open({ token: ptoken, onSuccess: function () { window.location.href = PD.base + 'payment-success.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); }, onClose: function () { t0 = Date.now(); tick(); } });
+                window.EditoriaPay.open({ token: ptoken, onSuccess: function (data) { if (data && data.receipt) { prc = String(data.receipt).replace(/[^A-Za-z0-9]/g, ''); } window.location.href = PD.base + 'payment-success.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk) + (prc ? '&r=' + encodeURIComponent(prc) : ''); }, onClose: function () { t0 = Date.now(); tick(); } });
             });
         };
         if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initPayBtn); } else { initPayBtn(); }
         var tick = function () {
-            api(PD.base + 'ajax/payment-status.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk)).then(function (r) {
+            api(PD.base + 'ajax/payment-status.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk) + (prc ? '&r=' + encodeURIComponent(prc) : '')).then(function (r) {
                 if (r.status === 'paid') { window.location.href = PD.base + 'payment-success.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); return; }
                 if (r.status === 'expired' || r.status === 'refunded') { st.innerHTML = '<div class="alert alert-error">❌ ' + esc(r.message || 'Payment was not completed.') + '</div>'; return; }
                 var hs = $('#payHubStatus'); if (hs && r.hub_status) { hs.innerHTML = 'Payment Hub status: <strong>' + esc(r.hub_status) + '</strong>'; }

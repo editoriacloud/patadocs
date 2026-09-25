@@ -2,7 +2,7 @@
 </div><!-- /.admin-layout -->
 </section>
 </div><!-- /.aspx-content -->
-<div class="footer-bar"><?= e(strtoupper(setting('site_name', 'PATADOCS'))) ?> ADMIN · SIGNED IN AS <?= e(strtoupper($_SESSION['admin']['username'] ?? '')) ?> (<?= e($_SESSION['admin']['role'] ?? '') ?>)</div>
+<div class="footer-bar"><?= e(strtoupper(setting('site_name', 'PATADOCS'))) ?> ADMIN · SIGNED IN AS <?= e(strtoupper($_SESSION['admin']['username'] ?? '')) ?> (<?= e($_SESSION['admin']['role'] ?? '') ?>) · VERSION <?= e(PD_VERSION) ?></div>
 </div><!-- /#form1 -->
 
 <div class="modal-overlay" id="modalOverlay">

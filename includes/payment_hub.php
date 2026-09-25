@@ -135,6 +135,19 @@ function hub_request(string $method, string $path, ?array $payload = null, strin
     return ['ok' => $r['status'] >= 200 && $r['status'] < 300] + $r;
 }
 
+/** What went wrong talking to the Hub, in words an admin (or buyer) can act on. */
+function hub_error_text(array $r): string
+{
+    switch ((int)$r['status']) {
+        case 0:   return 'the Payment Hub could not be reached';
+        case 401: return 'HTTP 401 — the Hub rejected this site\'s client ID / secret';
+        case 403: return 'HTTP 403 — this site\'s Hub application lacks a permission (scope)';
+        case 404: return 'HTTP 404 — the Hub does not know this invoice / payment';
+        case 422: return 'HTTP 422 — the Hub rejected the request';
+        default:  return 'HTTP ' . (int)$r['status'] . ' from the Hub';
+    }
+}
+
 /** Status words the Hub (or M-Pesa) may use. Anything else counts as "still pending". */
 function hub_status_word(string $w): string
 {
@@ -265,14 +278,14 @@ function hub_check(array $order): array
     $answers = []; $errors = [];
     if ($invoiceId !== '') {
         $r = hub_request('GET', '/invoices/' . rawurlencode($invoiceId), null, '', $label, 10);
-        if ($r['ok'] && $r['json']) { $answers['invoice'] = hub_normalize($r['json']); } else { $errors[] = 'invoice: ' . ($r['error'] ?: 'no answer'); }
+        if ($r['ok'] && $r['json']) { $answers['invoice'] = hub_normalize($r['json']); } else { $errors[] = 'invoice check: ' . hub_error_text($r); }
     }
     // The payment intent is asked too when the invoice is not paid yet — or is paid but its answer lacks the M-Pesa receipt
     // (kept on the order for "Recover purchase" and to stop a receipt being used twice).
     if ($intentId !== '' && (!isset($answers['invoice']) || $answers['invoice']['state'] !== 'success' || $answers['invoice']['receipt'] === '')) {
         $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId) . '/status', null, '', $label, 10);
         if (in_array($r['status'], [404, 405], true)) { $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId), null, '', $label, 10); }
-        if ($r['ok'] && $r['json']) { $answers['intent'] = hub_normalize($r['json']); } else { $errors[] = 'payment intent: ' . ($r['error'] ?: 'no answer'); }
+        if ($r['ok'] && $r['json']) { $answers['intent'] = hub_normalize($r['json']); } else { $errors[] = 'payment status check: ' . hub_error_text($r); }
     }
     if (!$answers) { return ['ok' => false, 'hub' => null, 'error' => implode('; ', $errors)]; }
     $pick = null;
@@ -281,12 +294,44 @@ function hub_check(array $order): array
     if ($pick['receipt'] === '') { foreach ($answers as $a) { if ($a['receipt'] !== '') { $pick['receipt'] = $a['receipt']; break; } } }
     if ($pick['phone'] === '') { foreach ($answers as $a) { if ($a['phone'] !== '') { $pick['phone'] = $a['phone']; break; } } }
     $raw = []; foreach ($answers as $k => $a) { $raw[] = $k . ': ' . ($a['raw_status'] !== '' ? $a['raw_status'] : 'unknown'); }
+    foreach ($errors as $er) { $raw[] = $er; }
     $pick['raw_status'] = implode(' · ', $raw);
     if ($pick['intent_id'] === '' && isset($answers['intent'])) { $pick['intent_id'] = $intentId; }
     if ($pick['invoice_id'] === '' && isset($answers['invoice'])) { $pick['invoice_id'] = $invoiceId; }
     // an invoice answer never carries a different invoice's id; an intent answer is about this intent
     if (isset($answers['invoice']) && $pick === $answers['invoice'] && $pick['invoice_id'] === '') { $pick['invoice_id'] = $invoiceId; }
     return ['ok' => true, 'hub' => $pick, 'error' => ''];
+}
+
+/**
+ * The widget's onSuccess hands the browser an M-Pesa receipt. It is only a hint: the server looks the receipt up at the
+ * Hub (POST /payments/verify re-checks FlexPay, then GET /transactions/{receipt}) and the order is marked paid only if
+ * that transaction references THIS order's invoice / payment intent. Returns 'paid' | 'pending' | 'refused'.
+ */
+function order_confirm_receipt(array $order, string $receipt): string
+{
+    $receipt = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $receipt));
+    if ($order['status'] === 'paid') { return 'paid'; }
+    if (!preg_match('/^[A-Z0-9]{8,12}$/', $receipt) || !rate_limit('receipt:order:' . $order['id'], 20, 600)) { return 'pending'; }
+    if (db_val('SELECT id FROM orders WHERE mpesa_receipt = ? AND id <> ?', [$receipt, $order['id']])) { return 'refused'; }
+    $label = order_ref($order);
+    hub_request('POST', '/payments/verify', ['receipt' => $receipt], '', $label, 10);
+    $r = hub_request('GET', '/transactions/' . rawurlencode($receipt), null, '', $label, 10);
+    if (!$r['ok'] || !$r['json']) {
+        if ($r['status'] !== 404) { db_exec('UPDATE orders SET hub_status = ? WHERE id = ?', [mb_substr('receipt check: ' . hub_error_text($r), 0, 255), $order['id']]); }
+        return 'pending';
+    }
+    $tx = hub_normalize($r['json']);
+    $mine = array_map('strtoupper', array_filter([(string)$order['hub_invoice_id'], (string)$order['invoice_ref'], (string)$order['hub_reference'], (string)$order['order_code']]));
+    if (!array_intersect($tx['ids'], $mine)) {
+        log_error('Receipt ' . $receipt . ' is not linked to invoice ' . $label . ' (transaction ids: ' . implode(',', $tx['ids']) . ')');
+        return 'refused';
+    }
+    if ($tx['state'] === 'failed') { return 'pending'; }
+    $f = order_finalize((int)$order['id'], ['state' => 'success', 'reference' => '', 'intent_id' => '', 'invoice_id' => '', 'receipt' => $receipt,
+        'amount' => $tx['amount'], 'currency' => $tx['currency'], 'phone' => $tx['phone'], 'raw_status' => 'transaction ' . $receipt . ': ' . ($tx['raw_status'] ?: 'found'),
+        'message' => 'Confirmed from the Hub transaction ' . $receipt], 'transaction');
+    return $f['ok'] ? 'paid' : 'refused';
 }
 
 /**
@@ -465,7 +510,7 @@ function order_finalize(int $orderId, array $hub, string $source): array
         if ($receipt && db_val('SELECT id FROM orders WHERE mpesa_receipt = ? AND id <> ?', [$receipt, $orderId])) { return $reject('duplicate_receipt'); }
 
         $payer = normalize_phone((string)($hub['phone'] ?? ''));        // the widget collected it; keep it for "Recover purchase"
-        db_exec("UPDATE orders SET status = 'paid', paid_at = NOW(), mpesa_receipt = ?, phone = IF(phone = '' AND ? <> '', ?, phone), hub_note = NULL, hub_status = LEFT(COALESCE(NULLIF(?, ''), 'paid'), 60) WHERE id = ?", [$receipt, $payer, $payer, (string)($hub['raw_status'] ?? ''), $orderId]);
+        db_exec("UPDATE orders SET status = 'paid', paid_at = NOW(), mpesa_receipt = ?, phone = IF(phone = '' AND ? <> '', ?, phone), hub_note = NULL, hub_status = LEFT(COALESCE(NULLIF(?, ''), 'paid'), 255) WHERE id = ?", [$receipt, $payer, $payer, (string)($hub['raw_status'] ?? ''), $orderId]);
         db_exec("UPDATE payments SET status = 'success', mpesa_receipt = COALESCE(?, mpesa_receipt), hub_reference = COALESCE(hub_reference, NULLIF(?, '')), confirmed_at = NOW(),
                  result_desc = ?, webhook_status = IF(? = 'webhook', 'verified', webhook_status) WHERE order_id = ? ORDER BY id DESC LIMIT 1",
             [$receipt, $hub['invoice_id'], mb_substr($hub['message'] ?: 'Confirmed via ' . $source, 0, 250), $source, $orderId]);
@@ -496,7 +541,7 @@ function order_refresh(array $order, bool $force = false): array
     if ($pay) { db_exec('UPDATE payments SET last_checked_at = NOW() WHERE id = ?', [$pay['id']]); }
     if (hub_configured()) {
         $c = hub_check($order);
-        db_exec('UPDATE orders SET hub_status = ? WHERE id = ?', [mb_substr($c['ok'] ? ($c['hub']['raw_status'] ?: 'pending') : 'unreachable', 0, 60), $order['id']]);
+        db_exec('UPDATE orders SET hub_status = ? WHERE id = ?', [mb_substr($c['ok'] ? ($c['hub']['raw_status'] ?: 'pending') : $c['error'], 0, 255), $order['id']]);
         if ($c['ok']) {
             if ($c['hub']['state'] === 'success') { $r = order_finalize((int)$order['id'], $c['hub'], 'status_check'); return $r['order'] ?? order_get((int)$order['id']); }
             if ($c['hub']['state'] === 'failed' && $order['status'] === 'pending') {

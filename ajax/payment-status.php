@@ -11,6 +11,8 @@ require_once __DIR__ . '/../includes/payment_hub.php';
 
 $order = order_from_request($_GET);
 if (!$order) { json_out(['ok' => false, 'status' => 'unknown', 'message' => 'Invoice not found.'], 404); }
+$rc = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', get_str('r', 20)));   // the widget's M-Pesa receipt, if the browser has one
+if ($rc !== '' && $order['status'] !== 'paid') { order_confirm_receipt($order, $rc); $order = order_get((int)$order['id']); }
 $order = order_refresh($order);
 switch ($order['status']) {
     case 'paid':

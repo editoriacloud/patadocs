@@ -14,6 +14,8 @@ require_once __DIR__ . '/includes/payment_hub.php';
 if (get_str('ref', 100) !== '' || get_str('o', 20) !== '') {
     $order = order_from_request($_GET);
     if (!$order) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
+    $receipt = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', get_str('r', 20)));   // from the widget's onSuccess, verified with the Hub
+    if ($receipt !== '' && $order['status'] !== 'paid') { order_confirm_receipt($order, $receipt); $order = order_get((int)$order['id']); }
     $order = order_refresh($order, true);                           // ask the Hub now
     if ($order['status'] === 'paid') { redirect(url('payment-success.php?' . order_qs($order))); }
     $docBack = $order['document_id'] ? (($d = doc_get((int)$order['document_id'])) ? doc_url($d) : url('')) : ($order['collection_id'] ? (($c = db_row('SELECT * FROM collections WHERE id = ?', [$order['collection_id']])) ? collection_url($c) : url('')) : url(''));
@@ -24,7 +26,7 @@ if (get_str('ref', 100) !== '' || get_str('o', 20) !== '') {
     ?>
     <section class="page-section active" id="page-pay">
         <div class="panel"><div class="panel-header <?= $pending ? 'orange' : '' ?>">PAYMENT <?= $pending ? 'PENDING' : e(strtoupper($order['status'])) ?></div>
-        <div class="panel-body" id="payPage" data-ref="<?= e(order_ref($order)) ?>" data-key="<?= e($order['access_key']) ?>" data-token="<?= e($pending ? (string)$order['hub_reference'] : '') ?>" style="max-width:720px;">
+        <div class="panel-body" id="payPage" data-ref="<?= e(order_ref($order)) ?>" data-receipt="<?= e($receipt) ?>" data-key="<?= e($order['access_key']) ?>" data-token="<?= e($pending ? (string)$order['hub_reference'] : '') ?>" style="max-width:720px;">
             <div class="result-area">
                 <div class="result-row"><strong>Invoice:</strong> <span class="mono"><?= e(order_ref($order)) ?></span></div>
                 <div class="result-row"><strong>Item:</strong> <?= e($order['item_title']) ?></div>
@@ -34,6 +36,7 @@ if (get_str('ref', 100) !== '' || get_str('o', 20) !== '') {
             <?php if ($pending) { ?>
                 <div id="payLive"><?php if ($order['hub_note']) { ?><div class="alert alert-error">⚠️ <?= e($order['hub_note']) ?></div><?php } else { ?><div class="alert alert-info"><span class="spinner"></span> <strong>Checking invoice <?= e(order_ref($order)) ?> with the Payment Hub…</strong> This page updates by itself the moment the Hub marks it paid.</div><?php } ?></div>
                 <p class="help" id="payHubStatus">Payment Hub status: <strong><?= e($order['hub_status'] ?: 'not checked yet') ?></strong></p>
+                <p class="help muted small">PATADOCS <?= e(PD_VERSION) ?></p>
                 <?php if (!$order['hub_note']) { /* a payment already reached the Hub for this invoice: never invite a second one */ ?>
                 <div class="form-actions">
                     <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic success hidden" id="hubPayBtn" style="font-size:1.1rem;">PAY <?= e(money($order['amount'])) ?></button><?php } ?>
