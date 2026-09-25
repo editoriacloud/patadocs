@@ -159,10 +159,7 @@ switch ($action) {
         };
         $checks = [
             $probe('POST', '/invoices', [], 'Create invoices', 'invoices.write', 'needed to start any payment'),
-            $probe('POST', '/payment-intents/patadocs-diagnostic/stk', ['phone' => '254700000000'], 'Send STK prompts', 'payments.create', 'the instant M-Pesa prompt'),
-            $probe('GET', '/payment-intents/patadocs-diagnostic/status', null, 'Read payment status', 'payments.read', 'confirming payments when a webhook is late or lost'),
-            $probe('GET', '/transactions?per_page=1', null, 'Look up transactions', 'payments.read', '“I already paid” M-Pesa code check'),
-            $probe('POST', '/payments/verify', ['receipt' => 'PDDIAG0000'], 'Force reconciliation', 'payments.verify', 'speeds up the M-Pesa code check'),
+            $probe('GET', '/payment-intents/patadocs-diagnostic/status', null, 'Read payment status', 'payments.read', 'confirming payments (GET /payment-intents/{id}/status)'),
         ];
         $lines = []; $missing = 0;
         foreach ($checks as $c) {
