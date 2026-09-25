@@ -116,12 +116,12 @@ switch ($action) {
 
     case 'hub_test':
         require_admin('settings.secure');
-        if (!hub_configured()) { $fail('Fill in the Payment Hub URL, Platform ID and API key first (and save).'); }
-        $r = hub_request('GET', str_replace(['{reference}', '{order_code}'], 'PATADOCS-CONNECTION-TEST', setting('hub_status_path', '/api/v1/payments/{reference}')));
-        if ($r['status'] === 0) { $fail('Could not reach the Payment Hub: ' . $r['error']); }
-        if (in_array($r['status'], [401, 403], true)) { $fail('The Hub answered HTTP ' . $r['status'] . ' — check the API key, Platform ID and authentication mode.'); }
-        if ($r['status'] === 404 || $r['ok']) { $ok('Connected: the Payment Hub is reachable and accepted your credentials (HTTP ' . $r['status'] . ' for a test reference).'); }
-        $fail('The Hub answered HTTP ' . $r['status'] . '. Check the status path in the settings.');
+        if (!hub_configured()) { $fail('Fill in the Payment Hub URL, Client ID and Client secret first (and save).'); }
+        $h = hub_http('GET', hub_base() . '/health', [], null);
+        if ($h['status'] === 0) { $fail('Could not reach the Payment Hub at ' . hub_base() . ': ' . $h['error']); }
+        hub_token_forget();
+        if (hub_token() === '') { $fail('The Hub is reachable but rejected the Client ID / Client secret (POST /api/v1/auth/token). Copy them again from the Hub\'s Applications page.'); }
+        $ok('Connected: the Payment Hub is reachable and issued an access token for your credentials.' . (setting('hub_webhook_secret') === '' ? ' ⚠ Add the webhook secret too — without it payments are only confirmed by polling.' : ''));
 
     // ---- System ----------------------------------------------------------------------------------------
     case 'rebuild_search':

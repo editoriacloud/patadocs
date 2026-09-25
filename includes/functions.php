@@ -174,10 +174,8 @@ function default_settings(): array
         'seo_default_description' => "Kenya's document discovery, sharing and download hub. Search schemes of work, exams, CV templates, business plans and more. Preview, pay via M-Pesa and download instantly.",
         'seo_title_suffix' => ' | PATADOCS', 'canonical_urls' => '1', 'sitemap_enabled' => '1', 'og_image' => '',
         // Payment Hub
-        'hub_url' => '', 'hub_platform_id' => '', 'hub_api_key' => '', 'hub_webhook_secret' => '',
-        'hub_success_url' => '', 'hub_failure_url' => '',
-        'hub_create_path' => '/api/v1/payments', 'hub_status_path' => '/api/v1/payments/{reference}',
-        'hub_auth_mode' => 'bearer', 'hub_signature_header' => 'X-Hub-Signature', 'hub_timeout' => '20',
+        'hub_url' => 'https://payments.editoriaweb.co.ke', 'hub_client_id' => '', 'hub_client_secret' => '', 'hub_webhook_secret' => '',
+        'hub_timeout' => '20', 'hub_token' => '', 'hub_token_expires' => '0',   // hub_token*: cached bearer token, managed by the code
         // Security / limits
         'session_timeout' => '60', 'max_login_attempts' => '5', 'lockout_minutes' => '15',
         'download_token_hours' => '48', 'free_token_minutes' => '30', 'free_token_max' => '3',

@@ -1,8 +1,9 @@
 <?php
 /**
  * PATADOCS — payment page (works with or without JavaScript).
- *   payment.php?doc=ID | ?col=ID   → phone form (starts an order + STK push through the Payment Hub)
- *   payment.php?o=ORDER&k=KEY      → live status of an order (polls until the Hub confirms)
+ *   payment.php?doc=ID | ?col=ID   → phone form (creates the order + its Payment Hub invoice)
+ *   payment.php?o=ORDER&k=KEY      → pay (EditoriaPay modal, or the Hub's hosted page without JS) and
+ *                                    live status of the order (polls until the Hub confirms)
  */
 require __DIR__ . '/includes/init.php';
 require_once __DIR__ . '/includes/payment_hub.php';
@@ -14,13 +15,14 @@ if (get_str('o', 20) !== '') {
     $order = order_refresh($order);
     if ($order['status'] === 'paid') { redirect(url('payment-success.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key']))); }
     $docBack = $order['document_id'] ? (($d = doc_get((int)$order['document_id'])) ? doc_url($d) : url('')) : ($order['collection_id'] ? (($c = db_row('SELECT * FROM collections WHERE id = ?', [$order['collection_id']])) ? collection_url($c) : url('')) : url(''));
-    $meta = ['title' => 'Payment ' . $order['order_code'], 'robots' => 'noindex,nofollow', 'nav' => ''];
-    include __DIR__ . '/includes/header.php';
     $pending = $order['status'] === 'pending';
+    $hostedUrl = $pending ? order_hosted_payment_url($order) : '';
+    $meta = ['title' => 'Payment ' . $order['order_code'], 'robots' => 'noindex,nofollow', 'nav' => '', 'payment_widget' => $pending];
+    include __DIR__ . '/includes/header.php';
     ?>
     <section class="page-section active" id="page-pay">
         <div class="panel"><div class="panel-header <?= $pending ? 'orange' : '' ?>">PAYMENT <?= $pending ? 'PENDING' : e(strtoupper($order['status'])) ?></div>
-        <div class="panel-body" id="payPage" data-order="<?= e($order['order_code']) ?>" data-key="<?= e($order['access_key']) ?>" style="max-width:720px;">
+        <div class="panel-body" id="payPage" data-order="<?= e($order['order_code']) ?>" data-key="<?= e($order['access_key']) ?>" data-token="<?= e($pending ? (string)$order['hub_reference'] : '') ?>" style="max-width:720px;">
             <div class="result-area">
                 <div class="result-row"><strong>Order ID:</strong> <span class="mono"><?= e($order['order_code']) ?></span></div>
                 <div class="result-row"><strong>Item:</strong> <?= e($order['item_title']) ?></div>
@@ -29,8 +31,12 @@ if (get_str('o', 20) !== '') {
             </div>
             <div id="payState" style="margin-top:16px;">
             <?php if ($pending) { ?>
-                <div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for payment.</strong> Check your phone and enter your M-Pesa PIN. This page updates automatically.</div>
-                <noscript><meta http-equiv="refresh" content="6"></noscript>
+                <div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for payment.</strong> Pay in the secure M-Pesa window (STK prompt or PayBill). This page updates automatically once the payment is confirmed.</div>
+                <div class="form-actions">
+                    <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic success hidden" id="hubPayBtn" style="font-size:1.1rem;">PAY <?= e(money($order['amount'])) ?></button><?php } ?>
+                    <?php if ($hostedUrl) { ?><a class="btn-classic<?= $order['hub_reference'] ? '' : ' success' ?>" id="hubPayLink" href="<?= e($hostedUrl) ?>" rel="noopener">Open the secure payment page</a><?php } ?>
+                </div>
+                <noscript><meta http-equiv="refresh" content="10"></noscript>
             <?php } else { ?>
                 <div class="alert alert-error">❌ <?= $order['status'] === 'expired' ? 'This payment request expired.' : 'The payment was not completed.' ?> You have not been charged unless M-Pesa confirmed a payment.</div>
                 <a class="btn-classic primary" href="<?= e($docBack) ?>">↩ TRY AGAIN</a>
@@ -78,7 +84,7 @@ include __DIR__ . '/includes/header.php';
                 <div class="frow"><label for="pPhone">M-Pesa phone number <span class="req">*</span></label><input type="tel" id="pPhone" name="phone" required placeholder="07XX XXX XXX" value="<?= e(post_str('phone', 20)) ?>" autocomplete="tel"></div>
                 <div class="frow"><label for="pEmail">Email (optional)</label><input type="email" id="pEmail" name="email" placeholder="for your receipt" value="<?= e(post_str('email', 190)) ?>"></div>
             </div>
-            <p class="help" style="margin-top:10px;">No account needed. You will receive an M-Pesa prompt on your phone — enter your PIN to pay. Your download unlocks automatically.</p>
+            <p class="help" style="margin-top:10px;">No account needed. On the next step, pay in the secure M-Pesa window (STK prompt or PayBill). Your download unlocks automatically once the payment is confirmed.</p>
             <div class="form-actions"><button type="submit" class="btn-classic success" style="font-size:1.1rem;">PAY <?= e(money($item['price'])) ?></button><a class="btn-classic" href="<?= e($item['back']) ?>">CANCEL</a></div>
         </form>
     </div></div>

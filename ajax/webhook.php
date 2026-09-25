@@ -1,9 +1,12 @@
 <?php
 /**
- * Payment Hub webhook. Protections: POST only · HMAC signature (Admin → Settings → Payment Hub → Webhook Secret)
- * · timestamp replay window · one-time event id (replay protection) · order/amount/currency/platform validation
- * inside order_finalize() · idempotent (a duplicate call can never create a second authorisation).
- * Point the Hub's callback to:  https://YOUR-DOMAIN/ajax/webhook.php
+ * Editoria Payment Hub webhook — the source of truth for "paid".
+ * Register it on the Hub's Webhooks page:  https://YOUR-DOMAIN/ajax/webhook.php
+ *
+ * Protections: POST only · HMAC-SHA256 signature over "{X-Editoria-Event-Id}.{X-Editoria-Timestamp}.{raw body}"
+ * (Admin → Settings → Payment Hub → Webhook secret) · 5-minute timestamp window · one-time event id (replay
+ * protection) · order/amount/currency/intent validation inside order_finalize() · idempotent (a duplicate call
+ * can never create a second authorisation).
  */
 define('PD_AJAX', true);
 define('PD_NO_SESSION', true);
@@ -20,24 +23,34 @@ $j = json_decode($raw, true);
 if (!is_array($j)) { json_out(['ok' => false, 'message' => 'Invalid JSON'], 400); }
 
 $hub = hub_normalize($j);
-$eventId = (string)($j['event_id'] ?? ($j['data']['event_id'] ?? ($j['id'] ?? '')));
-if ($eventId === '' || strlen($eventId) > 120) { $eventId = hash('sha256', $raw); }
+$eventType = strtolower((string)($j['event_type'] ?? ''));
+$eventId = mb_substr((string)$_SERVER['HTTP_X_EDITORIA_EVENT_ID'], 0, 120);
 try {
     db_insert('INSERT INTO webhook_events (event_id, order_code, signature_ok, payload, ip, result) VALUES (?, ?, 1, ?, ?, ?)',
         [$eventId, $hub['reference'] !== '' ? substr($hub['reference'], 0, 20) : null, $raw, client_ip(), 'received']);
 } catch (PDOException $e) {
-    if ($e->getCode() === '23000') { json_out(['ok' => true, 'message' => 'Duplicate event ignored']); }   // replay
+    if ($e->getCode() === '23000') { json_out(['ok' => true, 'message' => 'Duplicate event ignored']); }   // replay / Hub retry
     throw $e;
 }
 $setResult = function ($r) use ($eventId) { db_exec('UPDATE webhook_events SET result = ? WHERE event_id = ?', [mb_substr($r, 0, 60), $eventId]); };
 
+// Find the order: our order code (external_invoice_id), then the payment intent id, then the Hub invoice id.
 $order = $hub['reference'] !== '' ? order_by_code(strtoupper($hub['reference'])) : null;
-if (!$order && $hub['hub_reference'] !== '') { $order = db_row('SELECT * FROM orders WHERE hub_reference = ? LIMIT 1', [$hub['hub_reference']]); }
+if (!$order && $hub['intent_id'] !== '') { $order = db_row('SELECT * FROM orders WHERE hub_reference = ? LIMIT 1', [$hub['intent_id']]); }
+if (!$order && $hub['invoice_id'] !== '') {
+    $order = order_by_code(strtoupper($hub['invoice_id']))
+        ?: db_row('SELECT o.* FROM orders o JOIN payments p ON p.order_id = o.id WHERE p.hub_reference = ? ORDER BY p.id DESC LIMIT 1', [$hub['invoice_id']]);
+}
 if (!$order) { $setResult('order_not_found'); json_out(['ok' => true, 'message' => 'Unknown order — ignored']); }
 
 db_exec("UPDATE payments SET webhook_status = 'received' WHERE order_id = ? AND webhook_status = 'none' ORDER BY id DESC LIMIT 1", [$order['id']]);
-if ($hub['state'] === 'success') {
-    $r = order_finalize((int)$order['id'], $hub, 'webhook');
+
+if ($eventType === 'payment.confirmed' || $hub['state'] === 'success') {
+    // Prefer the Hub's own status endpoint (normalised amount + receipt); fall back to this signed event
+    // if the Hub cannot be reached right now.
+    $c = hub_check($order);
+    $source = $c['ok'] && $c['hub']['state'] === 'success' ? $c['hub'] : array_merge($hub, ['state' => 'success']);
+    $r = order_finalize((int)$order['id'], $source, 'webhook');
     $setResult($r['result']);
     json_out(['ok' => true, 'result' => $r['result']]);
 }
@@ -47,5 +60,5 @@ if ($hub['state'] === 'failed' && $order['status'] === 'pending') {
     $setResult('failed');
     json_out(['ok' => true, 'result' => 'failed']);
 }
-$setResult('pending_ignored');
+$setResult('ignored:' . ($eventType ?: 'unknown'));
 json_out(['ok' => true, 'result' => 'no_change']);

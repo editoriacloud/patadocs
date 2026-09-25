@@ -52,6 +52,7 @@ $meta = [
             'dateModified' => date('c', strtotime($doc['updated_at'])), 'isPartOf' => ['@type' => 'WebSite', 'name' => setting('site_name'), 'url' => url('')]]),
         breadcrumb_schema($crumbs),
     ],
+    'payment_widget' => !$isFree,
     'doc_js' => ['id' => $id, 'title' => $doc['title'], 'url' => $canonical, 'price' => price_label($doc), 'free' => $isFree, 'format' => $format, 'pages' => (int)$doc['pages']],
 ];
 include __DIR__ . '/includes/header.php';

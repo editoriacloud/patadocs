@@ -31,11 +31,10 @@ $tabs = [
         ['canonical_urls', 'Output canonical URLs', 'bool'], ['sitemap_enabled', 'Enable sitemap.xml', 'bool'], ['clean_urls', 'Clean URLs (needs Apache mod_rewrite)', 'bool', 'Turn OFF if links show 404 after install.'],
     ]],
     'hub' => ['Payment Hub', true, [
-        ['hub_url', 'Payment Hub URL (API base)', 'url', 'e.g. https://payments.editoriaweb.co.ke'], ['hub_platform_id', 'Platform ID', 'text'], ['hub_api_key', 'API key', 'secret'], ['hub_webhook_secret', 'Webhook secret', 'secret', 'Used to verify the HMAC signature of Hub callbacks.'],
-        ['hub_success_url', 'Success URL', 'text', 'Placeholders: {order_code} {access_key}'], ['hub_failure_url', 'Failure URL', 'text'],
-        ['hub_create_path', 'Create payment path', 'path'], ['hub_status_path', 'Payment status path', 'path', 'Use {reference} for the order/hub reference.'],
-        ['hub_auth_mode', 'Authentication', 'select', 'How the API key is sent.', ['bearer' => 'Authorization: Bearer <key>', 'x-api-key' => 'X-API-Key: <key>', 'both' => 'Both headers']],
-        ['hub_signature_header', 'Webhook signature header', 'text'], ['hub_timeout', 'Request timeout (seconds)', 'number', '', [5, 60]],
+        ['hub_url', 'Payment Hub URL', 'url', 'https://payments.editoriaweb.co.ke — the Hub address only, without /api/v1.'],
+        ['hub_client_id', 'Client ID', 'text', 'From the Hub → Applications → PATADOCS.'], ['hub_client_secret', 'Client secret', 'secret', 'Stays on this server; it is never sent to browsers.'],
+        ['hub_webhook_secret', 'Webhook secret', 'secret', 'From the Hub → Webhooks. Verifies the X-Editoria-Signature of each callback.'],
+        ['hub_timeout', 'Request timeout (seconds)', 'number', '', [5, 60]],
     ]],
     'security' => ['Security & limits', true, [
         ['session_timeout', 'Admin session timeout (minutes)', 'number', '', [5, 1440]], ['max_login_attempts', 'Maximum failed logins before lockout', 'number', '', [3, 20]], ['lockout_minutes', 'Lockout duration (minutes)', 'number', '', [1, 1440]],
@@ -84,6 +83,7 @@ if (is_post()) {
             if (!empty($_POST[$field . '_remove'])) { set_setting($key, ''); }
         }
     }
+    if ($tab === 'hub') { require_once __DIR__ . '/../includes/payment_hub.php'; hub_token_forget(); }   // credentials may have changed
     log_admin('settings_saved', 'settings', $tab);
     foreach ($errors as $er) { flash('error', $er); }
     if (!$errors) { flash('success', 'Settings saved.'); }
@@ -130,9 +130,10 @@ include __DIR__ . '/../includes/admin_header.php';
         <div class="section-title">HOW PATADOCS TALKS TO THE PAYMENT HUB</div>
         <div class="result-area">
             <div class="result-row"><strong>Webhook URL to register in the Hub:</strong> <code><?= e(url('ajax/webhook.php')) ?></code> <button type="button" class="btn-classic btn-sm" data-copy="<?= e(url('ajax/webhook.php')) ?>">Copy</button></div>
-            <div class="result-row">1. <strong>Create:</strong> <code>POST {URL}{create path}</code> JSON: platform_id, reference (Order ID), amount, currency, phone (2547…), description, callback_url, success_url, failure_url, metadata.</div>
-            <div class="result-row">2. <strong>Confirm:</strong> the Hub calls the webhook (HMAC-SHA256 of the raw body in the signature header) and/or PATADOCS asks <code>GET {URL}{status path}</code>. Payment is accepted only when status = success, the reference, amount, currency and platform match, and the M-Pesa receipt was never used before.</div>
-            <div class="result-row">Field names are mapped in <code>hub_normalize()</code> (includes/payment_hub.php) — adjust that single function if your Hub uses different names.</div>
+            <div class="result-row"><strong>Allowed to embed</strong> (Hub → Applications): <code><?= e(url('')) ?></code> — the payment window only opens on sites listed there.</div>
+            <div class="result-row">1. <strong>Create:</strong> the server gets a bearer token (<code>POST /api/v1/auth/token</code>) and creates an invoice (<code>POST /api/v1/invoices</code>, <code>external_invoice_id</code> = Order ID, also used as the Idempotency-Key).</div>
+            <div class="result-row">2. <strong>Pay:</strong> the browser opens the Hub's modal (<code>EditoriaPay.open</code>) with the invoice's payment intent id; the customer pays by STK or PayBill.</div>
+            <div class="result-row">3. <strong>Confirm:</strong> the Hub calls the webhook above (<code>payment.confirmed</code>, signed with the webhook secret) and PATADOCS also asks <code>GET /api/v1/payment-intents/{id}/status</code>. A download unlocks only after that server-side confirmation — the amount, order and payment intent must match and an M-Pesa receipt can be used once.</div>
         </div>
     <?php } } ?>
 </div></div>

@@ -1,45 +1,47 @@
 <?php
 /**
- * PATADOCS — Payment Hub integration, orders and secure download tokens.
+ * PATADOCS — Editoria Payment Hub integration, orders and secure download tokens.
  *
- * PATADOCS never talks to Safaricom. Your Payment Hub does STK push, M-Pesa processing,
- * confirmation and reconciliation. PATADOCS only handles: orders, payment requests,
- * payment status, unlocking documents and download authorisation.
+ * PATADOCS never talks to Safaricom. The Hub (https://payments.editoriaweb.co.ke) does it all:
+ *   1. PATADOCS (server) creates an invoice:   POST /api/v1/invoices  → payment_intent.id
+ *   2. The browser opens the Hub's modal:      EditoriaPay.open({ token: payment_intent.id, ... })
+ *   3. The customer pays by STK or PayBill; the Hub reconciles it and calls our signed webhook
+ *      (ajax/webhook.php, event "payment.confirmed").
+ *   4. Only the webhook or GET /api/v1/payment-intents/{id}/status (server-to-server) can mark an
+ *      order paid — the browser's onSuccess callback just tells us to go and check.
  *
- * The Hub contract (paths, auth header, signature header) is configurable in
- * Admin → Settings → Payment Hub. hub_normalize() is the ONE place that maps the Hub's
- * JSON field names to what PATADOCS needs — adapt it if your Hub uses other names.
+ * Credentials (client id/secret, webhook secret) live in Admin → Settings → Payment Hub and never
+ * reach the browser.
  */
 
 // ============================================================================
 // HUB CLIENT
 // ============================================================================
 
+const HUB_API_PREFIX = '/api/v1';
+
+/** Hub origin, e.g. https://payments.editoriaweb.co.ke (no trailing slash, no /api/v1). */
+function hub_base(): string
+{
+    $u = rtrim(trim((string)setting('hub_url')), '/');
+    $u = preg_replace('#/api/v1$#i', '', $u);                 // tolerate an API-base URL pasted by mistake
+    return preg_match('#^https?://[^\s/]+#i', $u) ? $u : '';
+}
+
 function hub_configured(): bool
 {
-    return setting('hub_url') !== '' && setting('hub_platform_id') !== '' && setting('hub_api_key') !== '';
+    return hub_base() !== '' && setting('hub_client_id') !== '' && setting('hub_client_secret') !== '';
 }
 
-/** Replaces {order_code} / {access_key} placeholders in the configured success/failure URLs. */
-function hub_return_url(string $setting, array $order): string
-{
-    $tpl = trim((string)setting($setting));
-    if ($tpl === '') { return url('payment-success.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key'])); }
-    return str_replace(['{order_code}', '{access_key}'], [rawurlencode($order['order_code']), rawurlencode($order['access_key'])], $tpl);
-}
+/** The Hub's payment modal script. It finds the Hub from its own src, so it must be loaded from the Hub. */
+function hub_widget_url(): string { return hub_base() !== '' ? hub_base() . '/pay/widget.js' : ''; }
 
-/** Low-level JSON request to the Hub. Returns ['ok','status','json','error','raw']. */
-function hub_request(string $method, string $path, ?array $payload = null): array
+/** One HTTP call. Returns ['status' => int (0 = network error), 'raw' => string, 'json' => ?array, 'error' => string]. */
+function hub_http(string $method, string $url, array $headers, ?string $body): array
 {
-    $base = rtrim((string)setting('hub_url'), '/');
-    if ($base === '' || !preg_match('#^https?://#i', $base)) { return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'Payment Hub URL is not configured.', 'raw' => '']; }
-    $url = $base . '/' . ltrim($path, '/');
-    $headers = ['Accept: application/json', 'Content-Type: application/json', 'X-Platform-Id: ' . setting('hub_platform_id'), 'User-Agent: PATADOCS/1.0'];
-    $mode = setting('hub_auth_mode', 'bearer'); $key = setting('hub_api_key');
-    if ($mode === 'bearer' || $mode === 'both') { $headers[] = 'Authorization: Bearer ' . $key; }
-    if ($mode === 'x-api-key' || $mode === 'both') { $headers[] = 'X-API-Key: ' . $key; }
     $timeout = max(5, min(60, (int)setting('hub_timeout', 20)));
-    $body = $payload !== null ? json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+    $headers = array_merge(['Accept: application/json', 'User-Agent: PATADOCS/1.1'], $headers);
+    if ($body !== null) { $headers[] = 'Content-Type: application/json'; }
 
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
@@ -49,30 +51,80 @@ function hub_request(string $method, string $path, ?array $payload = null): arra
         if ($body !== null) { curl_setopt($ch, CURLOPT_POSTFIELDS, $body); }
         $raw = curl_exec($ch); $err = curl_error($ch); $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         curl_close($ch);
-        if ($raw === false) { log_error('Hub request failed: ' . $err); return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'Could not reach the Payment Hub.', 'raw' => '']; }
+        if ($raw === false) { log_error('Hub ' . $method . ' ' . $url . ' failed: ' . $err); return ['status' => 0, 'raw' => '', 'json' => null, 'error' => 'Could not reach the Payment Hub.']; }
     } else {
-        $ctx = stream_context_create(['http' => ['method' => $method, 'header' => implode("\r\n", $headers), 'content' => $body ?? '', 'timeout' => $timeout, 'ignore_errors' => true]]);
+        $ctx = stream_context_create(['http' => ['method' => $method, 'header' => implode("\r\n", $headers), 'content' => $body ?? '', 'timeout' => $timeout, 'ignore_errors' => true, 'follow_location' => 0]]);
         $raw = @file_get_contents($url, false, $ctx);
         $code = 0;
         if (isset($http_response_header[0]) && preg_match('#\s(\d{3})\s#', $http_response_header[0], $m)) { $code = (int)$m[1]; }
-        if ($raw === false) { log_error('Hub request failed (stream)'); return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'Could not reach the Payment Hub.', 'raw' => '']; }
+        if ($raw === false) { log_error('Hub ' . $method . ' ' . $url . ' failed (stream)'); return ['status' => 0, 'raw' => '', 'json' => null, 'error' => 'Could not reach the Payment Hub.']; }
     }
     $json = json_decode((string)$raw, true);
-    return ['ok' => $code >= 200 && $code < 300, 'status' => $code, 'json' => is_array($json) ? $json : null,
-        'error' => ($code >= 200 && $code < 300) ? '' : 'Payment Hub returned HTTP ' . $code, 'raw' => mb_substr((string)$raw, 0, 2000)];
+    return ['status' => $code, 'raw' => mb_substr((string)$raw, 0, 4000), 'json' => is_array($json) ? $json : null,
+        'error' => ($code >= 200 && $code < 300) ? '' : 'Payment Hub returned HTTP ' . $code];
 }
 
 /**
- * Maps a Hub JSON response / webhook body to a standard shape:
- * state (success|failed|pending), reference (our order code), hub_reference, receipt, amount, currency, platform_id, message.
- * The "status" word is read from the innermost object so an API-level {"status":"success"} wrapper is never
+ * Bearer token from POST /auth/token (client_id + client_secret). Tokens last one hour, so they are
+ * cached in the settings table and renewed a minute before they expire (or right away after a 401).
+ */
+function hub_token(bool $renew = false): string
+{
+    $cached = (string)setting('hub_token');
+    if (!$renew && $cached !== '' && (int)setting('hub_token_expires', 0) > time() + 60) { return $cached; }
+
+    $r = hub_http('POST', hub_base() . HUB_API_PREFIX . '/auth/token', [], json_encode([
+        'client_id' => (string)setting('hub_client_id'), 'client_secret' => (string)setting('hub_client_secret'), 'grant_type' => 'client_credentials',
+    ]));
+    $j = $r['json'] ?? [];
+    $d = isset($j['data']) && is_array($j['data']) ? $j['data'] : $j;
+    $token = (string)($d['access_token'] ?? ($d['token'] ?? ''));
+    if ($r['status'] < 200 || $r['status'] >= 300 || $token === '') {
+        log_error('Hub auth/token failed: HTTP ' . $r['status'] . ' ' . $r['raw']);
+        return '';
+    }
+    $ttl = (int)($d['expires_in'] ?? 3600);
+    if (!empty($d['expires_at']) && ($ts = strtotime((string)$d['expires_at'])) !== false) { $ttl = $ts - time(); }
+    set_setting('hub_token', $token);
+    set_setting('hub_token_expires', (string)(time() + max(120, $ttl)));
+    return $token;
+}
+
+/** Forgets the cached bearer token (after the credentials change). */
+function hub_token_forget(): void { set_setting('hub_token', ''); set_setting('hub_token_expires', '0'); }
+
+/**
+ * Authenticated JSON request to /api/v1{$path}. Returns ['ok','status','json','error','raw'].
+ * $idempotencyKey makes a retried POST return the original result instead of creating a duplicate.
+ */
+function hub_request(string $method, string $path, ?array $payload = null, string $idempotencyKey = ''): array
+{
+    if (!hub_configured()) { return ['ok' => false, 'status' => 0, 'json' => null, 'error' => 'The Payment Hub is not configured.', 'raw' => '']; }
+    $url = hub_base() . HUB_API_PREFIX . '/' . ltrim($path, '/');
+    $body = $payload !== null ? json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+    for ($attempt = 0; $attempt < 2; $attempt++) {
+        $token = hub_token($attempt > 0);
+        if ($token === '') { return ['ok' => false, 'status' => 401, 'json' => null, 'error' => 'The Payment Hub rejected the client ID / secret.', 'raw' => '']; }
+        $headers = ['Authorization: Bearer ' . $token];
+        if ($idempotencyKey !== '') { $headers[] = 'Idempotency-Key: ' . $idempotencyKey; }
+        $r = hub_http($method, $url, $headers, $body);
+        if ($r['status'] !== 401) { break; }                  // 401 → token expired early or was revoked: renew once
+    }
+    return ['ok' => $r['status'] >= 200 && $r['status'] < 300] + $r;
+}
+
+/**
+ * Maps a Hub JSON response or webhook body to one shape:
+ * state (success|failed|pending), reference (our order code = external_invoice_id), intent_id, invoice_id,
+ * receipt, amount, currency, message.
+ * The status word is read from the innermost object so an API-level {"status":"success"} wrapper is never
  * mistaken for "payment success".
  */
 function hub_normalize(array $j): array
 {
     $scopes = [];
     $inner = $j;
-    foreach (['data', 'payment', 'transaction', 'intent'] as $k) {
+    foreach (['data', 'payment_intent', 'intent', 'payment', 'transaction'] as $k) {
         if (isset($inner[$k]) && is_array($inner[$k]) && !isset($inner[$k][0])) { $scopes[] = $inner[$k]; $inner = $inner[$k]; }
     }
     $scopes = array_reverse($scopes);   // innermost first
@@ -86,71 +138,81 @@ function hub_normalize(array $j): array
         return '';
     };
     $status = strtolower($pick(['payment_status', 'transaction_status', 'state']) ?: $pick(['status', 'result'], true));
-    if ($status === '') {                                   // webhook that only carries an event name, e.g. "payment.succeeded"
-        $event = strtolower($pick(['event', 'event_type', 'type']));
-        if (preg_match('/(succe|paid|complet|confirm)/', $event)) { $status = 'success'; }
+    if ($status === '') {                                   // webhook that only carries an event name, e.g. "payment.confirmed"
+        $event = strtolower($pick(['event_type', 'event', 'type']));
+        if (preg_match('/(confirm|succe|paid|complet)/', $event)) { $status = 'success'; }
         elseif (preg_match('/(fail|cancel|declin|expire|timeout)/', $event)) { $status = 'failed'; }
     }
-    $ok = ['success', 'succeeded', 'paid', 'completed', 'complete', 'confirmed', 'settled', 'successful'];
-    $bad = ['failed', 'failure', 'declined', 'cancelled', 'canceled', 'rejected', 'error', 'timeout', 'timed_out', 'expired', 'reversed'];
+    $ok = ['success', 'succeeded', 'successful', 'paid', 'completed', 'complete', 'confirmed', 'reconciled', 'settled'];
+    $bad = ['failed', 'failure', 'declined', 'cancelled', 'canceled', 'rejected', 'error', 'timeout', 'timed_out', 'expired', 'reversed', 'void', 'voided'];
     $state = in_array($status, $ok, true) ? 'success' : (in_array($status, $bad, true) ? 'failed' : 'pending');
-    $amount = $pick(['amount', 'paid_amount', 'amount_paid', 'total']);
+    $amount = $pick(['amount_paid', 'paid_amount', 'amount']);
     return [
         'state' => $state, 'raw_status' => $status,
-        'reference' => $pick(['reference', 'external_reference', 'order_reference', 'merchant_reference', 'order_code', 'account_reference']),
-        'hub_reference' => $pick(['hub_reference', 'payment_id', 'transaction_id', 'intent_id', 'checkout_request_id', 'uuid', 'id']),
-        'receipt' => strtoupper($pick(['mpesa_receipt', 'mpesa_receipt_number', 'MpesaReceiptNumber', 'receipt', 'receipt_number', 'mpesa_code', 'transaction_code'])),
+        'reference' => $pick(['external_invoice_id']),
+        'intent_id' => $pick(['payment_intent_id']) ?: (isset($j['payment_intent']['id']) && !is_array($j['payment_intent']['id']) ? (string)$j['payment_intent']['id'] : ''),
+        'invoice_id' => $pick(['invoice_id']),
+        'receipt' => strtoupper($pick(['mpesa_receipt', 'mpesa_receipt_number', 'MpesaReceiptNumber', 'receipt', 'receipt_number', 'mpesa_code', 'trans_id', 'TransID', 'transaction_code'])),
         'amount' => is_numeric($amount) ? (float)$amount : null,
         'currency' => strtoupper($pick(['currency'])),
-        'platform_id' => $pick(['platform_id', 'app_id', 'application_id']),
-        'message' => $pick(['message', 'result_desc', 'result_description', 'description', 'error', 'detail']),
+        'message' => $pick(['message', 'result_desc', 'description', 'error', 'detail']),
     ];
 }
 
-/** Sends the STK-push request to the Hub. Never returns "success" here — only the status check / webhook can. */
-function hub_initiate(array $order): array
+/**
+ * Creates (or, for a retry, fetches) the Hub invoice for an order. The order code is both the
+ * external_invoice_id and the Idempotency-Key, so a double click can never bill twice.
+ * Returns ['ok', 'message', 'intent_id', 'invoice_id', 'payment_url', 'raw'].
+ */
+function hub_create_invoice(array $order): array
 {
     $payload = [
-        'platform_id' => setting('hub_platform_id'), 'reference' => $order['order_code'], 'amount' => (float)$order['amount'],
-        'currency' => $order['currency'], 'phone' => $order['phone'],
-        'description' => 'PATADOCS: ' . mb_substr($order['item_title'], 0, 60),
-        'customer_name' => $order['customer_name'] ?: null, 'customer_email' => $order['email'] ?: null,
-        'callback_url' => url('ajax/webhook.php'),
-        'success_url' => hub_return_url('hub_success_url', $order), 'failure_url' => hub_return_url('hub_failure_url', $order),
-        'metadata' => ['order_code' => $order['order_code'], 'document_id' => $order['document_id'], 'collection_id' => $order['collection_id'], 'source' => 'patadocs'],
+        'external_invoice_id' => $order['order_code'],
+        'amount' => (float)$order['amount'],
+        'customer_phone' => '0' . substr((string)$order['phone'], 3),            // 2547XXXXXXXX → 07XXXXXXXX
+        'description' => mb_substr(setting('site_name', 'PATADOCS') . ' ' . $order['order_code'] . ': ' . $order['item_title'], 0, 120),
     ];
-    $r = hub_request('POST', setting('hub_create_path', '/api/v1/payments'), $payload);
-    $n = $r['json'] ? hub_normalize($r['json']) : ['state' => 'pending', 'hub_reference' => '', 'message' => ''];
-    if (!$r['ok'] || $n['state'] === 'failed') {
-        $msg = $n['message'] ?: 'The M-Pesa request could not be sent. Please try again.';
-        log_error('Hub initiate failed for ' . $order['order_code'] . ': HTTP ' . $r['status'] . ' ' . $r['raw']);
-        return ['ok' => false, 'message' => $msg, 'hub_reference' => '', 'raw' => $r['raw']];
+    if (!empty($order['customer_name'])) { $payload['customer_name'] = $order['customer_name']; }
+    $r = hub_request('POST', '/invoices', $payload, $order['order_code']);
+    $j = $r['json'] ?? [];
+    $inv = isset($j['data']) && is_array($j['data']) ? $j['data'] : $j;
+    $intent = isset($inv['payment_intent']) && is_array($inv['payment_intent']) ? $inv['payment_intent'] : [];
+    $intentId = (string)($intent['id'] ?? '');
+    if (!$r['ok'] || $intentId === '') {
+        log_error('Hub invoice failed for ' . $order['order_code'] . ': HTTP ' . $r['status'] . ' ' . $r['raw']);
+        $msg = is_string($j['message'] ?? null) && $r['status'] >= 400 && $r['status'] < 500 ? $j['message'] : 'The payment could not be started. Please try again.';
+        return ['ok' => false, 'message' => $msg, 'intent_id' => '', 'invoice_id' => '', 'payment_url' => '', 'raw' => $r['raw']];
     }
-    return ['ok' => true, 'message' => $n['message'], 'hub_reference' => $n['hub_reference'], 'raw' => $r['raw']];
+    return ['ok' => true, 'message' => '', 'intent_id' => $intentId, 'invoice_id' => (string)($inv['id'] ?? ($inv['invoice']['id'] ?? '')),
+        'payment_url' => (string)($intent['payment_url'] ?? ''), 'raw' => $r['raw']];
 }
 
-/** Asks the Hub for the real status of a payment (server-to-server verification). */
-function hub_check(array $order, string $hubRef = ''): array
+/** Asks the Hub for the authoritative status of an order's payment intent (server-to-server). */
+function hub_check(array $order): array
 {
-    $path = str_replace(['{reference}', '{order_code}'], [rawurlencode($hubRef !== '' ? $hubRef : $order['order_code']), rawurlencode($order['order_code'])], setting('hub_status_path', '/api/v1/payments/{reference}'));
-    $r = hub_request('GET', $path);
+    $intentId = (string)($order['hub_reference'] ?? '');
+    if ($intentId === '') { return ['ok' => false, 'hub' => null, 'error' => 'No payment intent for this order']; }
+    $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId) . '/status');
     if (!$r['ok'] || !$r['json']) { return ['ok' => false, 'hub' => null, 'error' => $r['error'] ?: 'Invalid Hub response']; }
-    return ['ok' => true, 'hub' => hub_normalize($r['json']), 'raw' => $r['raw']];
+    $hub = hub_normalize($r['json']);
+    if ($hub['intent_id'] === '') { $hub['intent_id'] = $intentId; }
+    return ['ok' => true, 'hub' => $hub, 'raw' => $r['raw']];
 }
 
-/** Verifies the HMAC signature (+ optional timestamp) of a webhook call. */
+/**
+ * Verifies a webhook: signature = HMAC-SHA256("{event id}.{timestamp}.{raw body}", webhook secret),
+ * sent as "X-Editoria-Signature: sha256=<hex>", and the timestamp must be within 5 minutes.
+ */
 function hub_verify_signature(string $raw): bool
 {
     $secret = (string)setting('hub_webhook_secret');
     if ($secret === '') { return false; }                                    // never accept unsigned webhooks
-    $hdr = 'HTTP_' . strtoupper(str_replace('-', '_', setting('hub_signature_header', 'X-Hub-Signature')));
-    $sig = strtolower(trim((string)($_SERVER[$hdr] ?? '')));
-    if ($sig === '') { return false; }
-    $sig = preg_replace('/^sha256=/', '', $sig);
-    $ts = (string)($_SERVER['HTTP_X_HUB_TIMESTAMP'] ?? ($_SERVER['HTTP_X_TIMESTAMP'] ?? ''));
-    if ($ts !== '' && ctype_digit($ts) && abs(time() - (int)$ts) > 300) { return false; }   // replay window
-    if (hash_equals(hash_hmac('sha256', $raw, $secret), $sig)) { return true; }
-    return $ts !== '' && hash_equals(hash_hmac('sha256', $ts . '.' . $raw, $secret), $sig);
+    $eventId = (string)($_SERVER['HTTP_X_EDITORIA_EVENT_ID'] ?? '');
+    $ts = (string)($_SERVER['HTTP_X_EDITORIA_TIMESTAMP'] ?? '');
+    $sig = trim((string)($_SERVER['HTTP_X_EDITORIA_SIGNATURE'] ?? ''));
+    if ($eventId === '' || !ctype_digit($ts) || strncmp($sig, 'sha256=', 7) !== 0) { return false; }
+    if (abs(time() - (int)$ts) > 300) { return false; }                     // replay window
+    return hash_equals(hash_hmac('sha256', $eventId . '.' . $ts . '.' . $raw, $secret), strtolower(substr($sig, 7)));
 }
 
 // ============================================================================
@@ -181,14 +243,18 @@ function order_create(array $item, string $phone, string $email, string $name, ?
     throw new RuntimeException('Could not allocate an order code');
 }
 
-/** Sends the STK request and records the payment row. */
+/**
+ * Creates the Hub invoice for an order and records the payment row.
+ * orders.hub_reference = the payment intent id (what the browser modal and the status check use);
+ * payments.hub_reference = the Hub invoice id (what webhooks may refer to).
+ */
 function order_start_payment(array $order): array
 {
-    $pid = db_insert("INSERT INTO payments (order_id, phone, amount, currency, method, status) VALUES (?, ?, ?, ?, 'mpesa_stk', 'initiated')", [$order['id'], $order['phone'], $order['amount'], $order['currency']]);
-    $r = hub_initiate($order);
+    $pid = db_insert("INSERT INTO payments (order_id, phone, amount, currency, method, status) VALUES (?, ?, ?, ?, 'editoria_pay', 'initiated')", [$order['id'], $order['phone'], $order['amount'], $order['currency']]);
+    $r = hub_create_invoice($order);
     if ($r['ok']) {
-        db_exec("UPDATE payments SET status = 'pending', hub_reference = ?, response_json = ? WHERE id = ?", [$r['hub_reference'] ?: null, $r['raw'], $pid]);
-        if ($r['hub_reference'] !== '') { db_exec('UPDATE orders SET hub_reference = ? WHERE id = ?', [$r['hub_reference'], $order['id']]); }
+        db_exec("UPDATE payments SET status = 'pending', hub_reference = ?, response_json = ? WHERE id = ?", [$r['invoice_id'] ?: null, $r['raw'], $pid]);
+        db_exec('UPDATE orders SET hub_reference = ? WHERE id = ?', [$r['intent_id'], $order['id']]);
     } else {
         db_exec("UPDATE payments SET status = 'failed', result_desc = ?, response_json = ? WHERE id = ?", [mb_substr($r['message'], 0, 250), $r['raw'], $pid]);
     }
@@ -196,8 +262,9 @@ function order_start_payment(array $order): array
 }
 
 /**
- * Validates request + creates the order + asks the Hub for the STK push.
- * $type: 'doc' | 'collection'. Returns ['ok', 'message', 'order', 'key', ...].
+ * Validates the request, creates the order and its Hub invoice.
+ * $type: 'doc' | 'collection'. Returns ['ok', 'message', 'order', 'key', 'token', 'pay_url', ...] where
+ * token is the payment intent id the browser passes to EditoriaPay.open().
  */
 function checkout_start(string $type, int $id, string $phoneRaw, string $email = '', string $name = ''): array
 {
@@ -227,8 +294,9 @@ function checkout_start(string $type, int $id, string $phoneRaw, string $email =
     if (db_val("SELECT id FROM orders WHERE phone = ? AND status = 'paid' AND document_id <=> ? AND collection_id <=> ? LIMIT 1", [$phone, $docId, $colId])) {
         return $fail('You have already purchased this on this number. Use "Recover purchase" with your Order ID to download it again.', ['code' => 'already_paid', 'recover' => true]);
     }
-    $pend = db_row("SELECT * FROM orders WHERE phone = ? AND status = 'pending' AND document_id <=> ? AND collection_id <=> ? AND created_at > (NOW() - INTERVAL 3 MINUTE) AND expires_at > NOW() ORDER BY id DESC LIMIT 1", [$phone, $docId, $colId]);
-    if ($pend) { return ['ok' => true, 'order' => $pend['order_code'], 'key' => $pend['access_key'], 'message' => 'A payment request was already sent to your phone.', 'reused' => true]; }
+    // Same customer, same item, still unpaid → reuse that order and its invoice instead of billing twice
+    $pend = db_row("SELECT * FROM orders WHERE phone = ? AND status = 'pending' AND document_id <=> ? AND collection_id <=> ? AND hub_reference IS NOT NULL AND expires_at > NOW() ORDER BY id DESC LIMIT 1", [$phone, $docId, $colId]);
+    if ($pend) { return checkout_result($pend, true); }
 
     $last = $_SESSION['last_search'] ?? null;
     $searchId = ($last && time() - (int)$last['t'] < 7200) ? (int)$last['id'] : null;
@@ -236,14 +304,32 @@ function checkout_start(string $type, int $id, string $phoneRaw, string $email =
     $r = order_start_payment($order);
     if (!$r['ok']) {
         db_exec("UPDATE orders SET status = 'failed' WHERE id = ?", [$order['id']]);
-        return $fail($r['message'] ?: 'The M-Pesa request could not be sent. Please try again.');
+        return $fail($r['message'] ?: 'The payment could not be started. Please try again.');
     }
-    return ['ok' => true, 'order' => $order['order_code'], 'key' => $order['access_key'], 'message' => 'Check your phone and enter your M-Pesa PIN.'];
+    return checkout_result(order_get((int)$order['id']), false);
+}
+
+/** What the browser needs to open the payment modal for a pending order. */
+function checkout_result(array $order, bool $reused): array
+{
+    return ['ok' => true, 'order' => $order['order_code'], 'key' => $order['access_key'], 'token' => (string)$order['hub_reference'],
+        'pay_url' => order_hosted_payment_url($order), 'reused' => $reused, 'message' => 'Complete the payment in the secure M-Pesa window.'];
+}
+
+/** The Hub's hosted payment page for an order (no-JavaScript fallback), taken from the invoice response. */
+function order_hosted_payment_url(array $order): string
+{
+    $raw = db_val("SELECT response_json FROM payments WHERE order_id = ? AND method = 'editoria_pay' AND response_json IS NOT NULL ORDER BY id DESC LIMIT 1", [$order['id']]);
+    $j = $raw ? json_decode((string)$raw, true) : null;
+    if (!is_array($j)) { return ''; }
+    $inv = isset($j['data']) && is_array($j['data']) ? $j['data'] : $j;
+    $u = (string)($inv['payment_intent']['payment_url'] ?? '');
+    return preg_match('#^https://#i', $u) ? $u : '';
 }
 
 /**
  * Marks an order PAID after the Hub confirmed it (webhook or status check). Idempotent and safe to call
- * from several processes at once: the order row is locked, amount/currency/reference/platform are validated,
+ * from several processes at once: the order row is locked, amount/currency/reference/payment intent are validated,
  * a receipt can only ever belong to one order, and download tokens are issued exactly once.
  * $hub is a hub_normalize() array. Returns ['ok', 'result', 'order'].
  */
@@ -265,15 +351,14 @@ function order_finalize(int $orderId, array $hub, string $source): array
         if ($hub['reference'] !== '' && strcasecmp($hub['reference'], $o['order_code']) !== 0) { return $reject('reference_mismatch'); }
         if ($hub['amount'] !== null && abs($hub['amount'] - (float)$o['amount']) > 0.009) { return $reject('amount_mismatch'); }
         if ($hub['currency'] !== '' && strcasecmp($hub['currency'], $o['currency']) !== 0) { return $reject('currency_mismatch'); }
-        $plat = (string)setting('hub_platform_id');
-        if ($hub['platform_id'] !== '' && $plat !== '' && strcasecmp($hub['platform_id'], $plat) !== 0) { return $reject('platform_mismatch'); }
+        if ($hub['intent_id'] !== '' && (string)$o['hub_reference'] !== '' && $hub['intent_id'] !== (string)$o['hub_reference']) { return $reject('intent_mismatch'); }
         $receipt = $hub['receipt'] !== '' ? $hub['receipt'] : null;
         if ($receipt && db_val('SELECT id FROM orders WHERE mpesa_receipt = ? AND id <> ?', [$receipt, $orderId])) { return $reject('duplicate_receipt'); }
 
-        db_exec("UPDATE orders SET status = 'paid', paid_at = NOW(), mpesa_receipt = ?, hub_reference = COALESCE(NULLIF(?, ''), hub_reference) WHERE id = ?", [$receipt, $hub['hub_reference'], $orderId]);
-        db_exec("UPDATE payments SET status = 'success', mpesa_receipt = COALESCE(?, mpesa_receipt), hub_reference = COALESCE(NULLIF(?, ''), hub_reference), confirmed_at = NOW(),
+        db_exec("UPDATE orders SET status = 'paid', paid_at = NOW(), mpesa_receipt = ? WHERE id = ?", [$receipt, $orderId]);
+        db_exec("UPDATE payments SET status = 'success', mpesa_receipt = COALESCE(?, mpesa_receipt), hub_reference = COALESCE(hub_reference, NULLIF(?, '')), confirmed_at = NOW(),
                  result_desc = ?, webhook_status = IF(? = 'webhook', 'verified', webhook_status) WHERE order_id = ? ORDER BY id DESC LIMIT 1",
-            [$receipt, $hub['hub_reference'], mb_substr($hub['message'] ?: 'Confirmed via ' . $source, 0, 250), $source, $orderId]);
+            [$receipt, $hub['invoice_id'], mb_substr($hub['message'] ?: 'Confirmed via ' . $source, 0, 250), $source, $orderId]);
         if ($o['document_id']) { db_exec('UPDATE documents SET purchase_count = purchase_count + 1, revenue = revenue + ? WHERE id = ?', [$o['amount'], $o['document_id']]); }
         elseif ($o['collection_id']) { db_exec('UPDATE documents SET purchase_count = purchase_count + 1 WHERE id IN (SELECT document_id FROM collection_documents WHERE collection_id = ?)', [$o['collection_id']]); }
         $o = order_get($orderId);
@@ -299,7 +384,7 @@ function order_refresh(array $order, bool $force = false): array
     if ($pay && !$force && $pay['last_checked_at'] && time() - strtotime($pay['last_checked_at']) < 3) { return $order; }
     if ($pay) { db_exec('UPDATE payments SET last_checked_at = NOW() WHERE id = ?', [$pay['id']]); }
     if (hub_configured()) {
-        $c = hub_check($order, (string)($pay['hub_reference'] ?? ''));
+        $c = hub_check($order);
         if ($c['ok']) {
             if ($c['hub']['state'] === 'success') { $r = order_finalize((int)$order['id'], $c['hub'], 'status_check'); return $r['order'] ?? order_get((int)$order['id']); }
             if ($c['hub']['state'] === 'failed' && $order['status'] === 'pending') {

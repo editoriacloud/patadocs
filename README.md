@@ -64,31 +64,36 @@ private_documents/    ORIGINAL files (web access denied, random file names)
 
 ## 4. Payment Hub (M-Pesa) integration
 
-PATADOCS contains **no Daraja code**. It creates the order and asks *your* Payment Hub to run the STK push; the Hub confirms, PATADOCS validates and unlocks the download.
+PATADOCS contains **no Daraja code**. It uses the Editoria Payment Hub (`https://payments.editoriaweb.co.ke`): the server creates an
+invoice, the customer pays in the Hub's embedded modal (STK or PayBill), the Hub confirms, PATADOCS validates and unlocks the download.
 
-**Admin → Settings → Payment Hub:** Hub URL, Platform ID, API key, Webhook secret, Success/Failure URLs, endpoint paths, auth mode, signature header.
-Register this callback in the Hub: `https://YOUR-DOMAIN/ajax/webhook.php`
+**In the Hub** (Applications → PATADOCS): copy the Client ID + Client secret, add your site (e.g. `https://knickpoint.co.ke/patadocs`)
+to *Allowed to embed*, and on the Webhooks page register `https://YOUR-DOMAIN/ajax/webhook.php` and copy its secret.
+**In PATADOCS** (Admin → Settings → Payment Hub): Hub URL, Client ID, Client secret, Webhook secret → Save → *Test connection*.
 
-Flow: `BUY & DOWNLOAD` → phone → **PENDING** order `DOC-XXXXXXXX` → `POST {hub}{create path}` → customer enters PIN →
-(a) signed webhook and/or (b) PATADOCS polls `GET {hub}{status path}` (server-to-server) → **PAID** → download token(s) issued → "PAYMENT SUCCESSFUL" + auto-download.
+Flow: `BUY & DOWNLOAD` → phone → **PENDING** order `DOC-XXXXXXXX` → server `POST /api/v1/invoices` → browser
+`EditoriaPay.open({ token: payment_intent.id })` → customer pays → (a) signed `payment.confirmed` webhook and/or (b) PATADOCS asks
+`GET /api/v1/payment-intents/{id}/status` (server-to-server) → **PAID** → download token(s) issued → "PAYMENT SUCCESSFUL" + auto-download.
+The modal's `onSuccess` callback is only a signal to start checking — it never unlocks anything by itself.
 
-Default contract (all paths/headers are settings):
 ```
-POST /api/v1/payments        Authorization: Bearer <key>   X-Platform-Id: <platform id>
-  { platform_id, reference:"DOC-XXXXXXXX", amount, currency:"KES", phone:"2547…", description,
-    customer_name, customer_email, callback_url, success_url, failure_url, metadata:{…} }
-GET  /api/v1/payments/{reference}
-Webhook → POST /ajax/webhook.php   header X-Hub-Signature: sha256=HMAC_SHA256(raw body, webhook secret)
+POST /api/v1/auth/token                  { client_id, client_secret }  → bearer token (1 h, cached in the settings table)
+POST /api/v1/invoices                    Authorization: Bearer …   Idempotency-Key: DOC-XXXXXXXX
+  { external_invoice_id: "DOC-XXXXXXXX", amount, customer_phone: "07…", customer_name, description }  → payment_intent.id
+GET  /api/v1/payment-intents/{id}/status
+Webhook → POST /ajax/webhook.php
+  X-Editoria-Event-Id, X-Editoria-Timestamp,
+  X-Editoria-Signature: sha256=HMAC_SHA256("{event id}.{timestamp}.{raw body}", webhook secret)
 ```
-> **Important:** the exact field names of *your* Hub were not available while building this. All mapping is done in **one function**,
-> `hub_normalize()` in `includes/payment_hub.php` (it already understands common names such as `status/payment_status/state`,
-> `reference/order_code`, `mpesa_receipt/receipt`, `data{…}` wrappers…). If your Hub differs, adjust that function and the two paths in Settings —
-> use **Settings → Payment Hub → Test connection**, then make a KES 1 test payment.
+`<script src="https://payments.editoriaweb.co.ke/pay/widget.js">` is added to `<head>` only on pages with a Buy button
+(`$meta['payment_widget']`). Without JavaScript, `payment.php` links to the Hub's hosted payment page instead.
+Response field names are mapped in one function, `hub_normalize()` in `includes/payment_hub.php`.
 
-**Payment security (all enforced server-side):** frontend "success" is never trusted · order, amount, currency, platform and reference are validated ·
-an M-Pesa receipt can belong to only one order · duplicate orders/clicks are merged · already-paid phone+document is blocked ·
-webhooks need a valid HMAC, a fresh timestamp (if sent) and a never-seen event id · tokens are issued exactly once inside a locked transaction ·
-the order status endpoint needs the order's secret access key (guessing order numbers reveals nothing).
+**Payment security (all enforced server-side):** browser "success" is never trusted · order code, amount, currency and payment intent are
+validated · an M-Pesa receipt can belong to only one order · a repeat click reuses the unpaid order and its invoice (and the Idempotency-Key
+prevents duplicate invoices) · already-paid phone+document is blocked · webhooks need a valid HMAC, a timestamp within 5 minutes and a
+never-seen event id · tokens are issued exactly once inside a locked transaction · the order status endpoint needs the order's secret
+access key (guessing order numbers reveals nothing) · client secret and webhook secret never leave the server.
 
 ## 5. Secure downloads & purchase recovery
 * Originals live in `private_documents/` (denied by `.htaccess`, random names) — the browser never receives them except through `download.php?token=…`.
@@ -154,7 +159,7 @@ please run a KES 1 end-to-end payment and click through the site (desktop + phon
 | Category / document pages show **404** | `mod_rewrite` or `AllowOverride All` is off. Turn off **Settings → SEO → Clean URLs** (or ask the host to enable rewriting). |
 | Upload says the file is too large | Raise `upload_max_filesize` and `post_max_size` (cPanel → MultiPHP INI Editor) and **Settings → Documents → Maximum file size**. |
 | Preview not generated | See §6. Check *Admin → edit document → Preview*; upload preview images manually, or ask the host to install `poppler-utils` / LibreOffice. |
-| Payment stays **pending** | Check the Hub URL / Platform ID / API key (Settings → Payment Hub → *Test connection*), that the Hub can reach `/ajax/webhook.php`, the webhook secret, and *Admin → Payments → Webhook events*. The status check (server-to-server) also confirms payments without the webhook. |
+| Payment stays **pending** | Check the Hub URL / Client ID / Client secret (Settings → Payment Hub → *Test connection*), that the Hub can reach `/ajax/webhook.php`, the webhook secret, and *Admin → Payments → Webhook events*. The status check (server-to-server) also confirms payments without the webhook. |
 | No emails | Receipts and notices use PHP `mail()`; many hosts restrict it. Nothing else depends on email. |
 | Behind Cloudflare / a CDN | Do **not** cache HTML pages (pages carry per-visitor CSRF tokens). Set `TRUST_PROXY` to `true` in `includes/config.php` so IPs and HTTPS are detected correctly. |
 | Blank page / need details | Set `APP_ENV` to `'development'` temporarily, or read `private_documents/error.log`. |

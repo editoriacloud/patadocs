@@ -15,7 +15,7 @@ $crumbs = [['Home', url('')], ['Collection', null], [$col['title'], null]];
 $items = []; foreach ($docs as $i => $d) { $items[] = ['@type' => 'ListItem', 'position' => $i + 1, 'url' => doc_url($d), 'name' => $d['title']]; }
 $meta = [
     'title' => trim((string)$col['seo_title']) !== '' ? $col['seo_title'] : $col['title'], 'description' => $desc, 'canonical' => $canonical, 'nav' => 'browse',
-    'og_image' => $col['cover_image'] ? url($col['cover_image']) : '',
+    'og_image' => $col['cover_image'] ? url($col['cover_image']) : '', 'payment_widget' => !$isFree && $docs,
     'schema' => [['@context' => 'https://schema.org', '@type' => 'CollectionPage', 'name' => $col['title'], 'description' => $desc, 'url' => $canonical, 'mainEntity' => ['@type' => 'ItemList', 'itemListElement' => $items]],
         breadcrumb_schema([['Home', url('')], [$col['title'], null]])],
 ];

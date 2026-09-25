@@ -1,7 +1,8 @@
 <?php
 /**
  * Public page header (design: top toolbar + navigation).
- * Set $meta before including: title, description, canonical, robots, keywords, og_type, og_image, schema[], nav.
+ * Set $meta before including: title, description, canonical, robots, keywords, og_type, og_image, schema[], nav,
+ * payment_widget (true on pages with a Buy button: loads the Payment Hub's EditoriaPay modal script).
  */
 $meta = (isset($meta) && is_array($meta)) ? $meta : [];
 $navKey = $meta['nav'] ?? '';
@@ -29,6 +30,7 @@ $favicon = setting('site_favicon') ? url(setting('site_favicon')) : asset('image
 <link rel="icon" href="<?= e($favicon) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/style.css')) ?>">
 <link rel="stylesheet" href="<?= e(asset('css/extra.css')) ?>">
+<?php if (!empty($meta['payment_widget'])) { require_once __DIR__ . '/payment_hub.php'; if (hub_widget_url() !== '') { echo '<script src="' . e(hub_widget_url()) . '"></script>' . "\n"; } } ?>
 <?= $meta['head_extra'] ?? '' ?>
 </head>
 <body class="light-theme">
