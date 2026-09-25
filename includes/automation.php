@@ -264,6 +264,7 @@ function job_cleanup(): string
     $n['expired links'] = db_exec("UPDATE download_tokens SET status = 'expired' WHERE status = 'active' AND expires_at < NOW()");
     $n['old webhook events'] = db_exec('DELETE FROM webhook_events WHERE created_at < (NOW() - INTERVAL 180 DAY)');
     $n['old job logs'] = db_exec('DELETE FROM job_runs WHERE created_at < (NOW() - INTERVAL 30 DAY)');
+    $n['old Hub API log entries'] = db_exec('DELETE FROM hub_log WHERE created_at < (NOW() - INTERVAL 14 DAY)');
     $files = 0;
     $tmp = rtrim(UPLOAD_DIR, '/\\') . '/temporary';
     if (is_dir($tmp)) {

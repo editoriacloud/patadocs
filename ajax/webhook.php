@@ -17,6 +17,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') { json_out(['ok' => false, 'm
 $raw = (string)file_get_contents('php://input', false, null, 0, 65536);
 if (!hub_verify_signature($raw)) {
     log_error('Webhook rejected: bad/missing signature from ' . client_ip());
+    // Keep a trace (rate limited, truncated) so Admin → Payments shows "webhooks arrive but the secret does not match"
+    if (rate_limit('wh-bad:' . client_ip(), 20, 600)) {
+        $why = setting('hub_webhook_secret') === '' ? 'no_secret_set' : (empty($_SERVER['HTTP_X_EDITORIA_SIGNATURE']) ? 'unsigned' : (abs(time() - (int)($_SERVER['HTTP_X_EDITORIA_TIMESTAMP'] ?? 0)) > 300 ? 'stale_timestamp' : 'bad_signature'));
+        try { db_insert('INSERT INTO webhook_events (event_id, order_code, signature_ok, payload, ip, result) VALUES (?, NULL, 0, ?, ?, ?)', ['rejected-' . bin2hex(random_bytes(8)), mb_substr($raw, 0, 4000), client_ip(), $why]); } catch (Throwable $e) { }
+    }
     json_out(['ok' => false, 'message' => 'Invalid signature'], 401);
 }
 $j = json_decode($raw, true);

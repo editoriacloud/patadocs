@@ -36,6 +36,7 @@ $tabs = [
         ['hub_url', 'Payment Hub URL', 'url', 'https://payments.editoriaweb.co.ke — the Hub address only, without /api/v1.'],
         ['hub_client_id', 'Client ID', 'text', 'From the Hub → Applications → PATADOCS.'], ['hub_client_secret', 'Client secret', 'secret', 'Stays on this server; it is never sent to browsers.'],
         ['hub_webhook_secret', 'Webhook secret', 'secret', 'From the Hub → Webhooks. Verifies the X-Editoria-Signature of each callback.'],
+        ['hub_stk_direct', 'Send the M-Pesa prompt instantly from the server', 'bool', 'On (recommended): the phone rings the moment the buyer presses Pay; the Hub window is only used for PayBill. Needs the payments.create scope.'],
         ['hub_timeout', 'Request timeout (seconds)', 'number', '', [5, 60]],
     ]],
     'security' => ['Security & limits', true, [
