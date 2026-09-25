@@ -4,39 +4,42 @@
  *   payment.php?doc=ID | ?col=ID  → item + Pay button. With JavaScript the button opens the Hub's widget
  *                                  (EditoriaPay.open); without it, the order is created and the buyer goes to the
  *                                  Hub's hosted payment page.
- *   payment.php?o=ORDER&k=KEY     → the order's status as the Hub reports it (GET /payment-intents/{id}/status,
+ *   payment.php?ref=INVOICE&k=KEY → the invoice's status as the Hub reports it (GET /payment-intents/{id}/status,
  *                                  checked server-side). Paid → the download page. Nothing else unlocks an order.
  */
 require __DIR__ . '/includes/init.php';
 require_once __DIR__ . '/includes/payment_hub.php';
 
 // ---- Order status (follows the Hub) --------------------------------------------------------
-if (get_str('o', 20) !== '') {
-    $order = order_by_code(strtoupper(get_str('o', 20)));
-    if (!$order || !order_key_ok($order, get_str('k', 64))) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
+if (get_str('ref', 100) !== '' || get_str('o', 20) !== '') {
+    $order = order_from_request($_GET);
+    if (!$order) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
     $order = order_refresh($order, true);                           // ask the Hub now
-    if ($order['status'] === 'paid') { redirect(url('payment-success.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key']))); }
+    if ($order['status'] === 'paid') { redirect(url('payment-success.php?' . order_qs($order))); }
     $docBack = $order['document_id'] ? (($d = doc_get((int)$order['document_id'])) ? doc_url($d) : url('')) : ($order['collection_id'] ? (($c = db_row('SELECT * FROM collections WHERE id = ?', [$order['collection_id']])) ? collection_url($c) : url('')) : url(''));
     $pending = $order['status'] === 'pending';
     $hostedUrl = $pending ? order_hosted_payment_url($order) : '';
-    $meta = ['title' => 'Payment ' . $order['order_code'], 'robots' => 'noindex,nofollow', 'nav' => '', 'payment_widget' => $pending];
+    $meta = ['title' => 'Payment ' . order_ref($order), 'robots' => 'noindex,nofollow', 'nav' => '', 'payment_widget' => $pending];
     include __DIR__ . '/includes/header.php';
     ?>
     <section class="page-section active" id="page-pay">
         <div class="panel"><div class="panel-header <?= $pending ? 'orange' : '' ?>">PAYMENT <?= $pending ? 'PENDING' : e(strtoupper($order['status'])) ?></div>
-        <div class="panel-body" id="payPage" data-order="<?= e($order['order_code']) ?>" data-key="<?= e($order['access_key']) ?>" data-token="<?= e($pending ? (string)$order['hub_reference'] : '') ?>" style="max-width:720px;">
+        <div class="panel-body" id="payPage" data-ref="<?= e(order_ref($order)) ?>" data-key="<?= e($order['access_key']) ?>" data-token="<?= e($pending ? (string)$order['hub_reference'] : '') ?>" style="max-width:720px;">
             <div class="result-area">
-                <div class="result-row"><strong>Order ID:</strong> <span class="mono"><?= e($order['order_code']) ?></span></div>
+                <div class="result-row"><strong>Invoice:</strong> <span class="mono"><?= e(order_ref($order)) ?></span></div>
                 <div class="result-row"><strong>Item:</strong> <?= e($order['item_title']) ?></div>
                 <div class="result-row"><strong>Amount:</strong> <?= e(money($order['amount'])) ?></div>
             </div>
             <div id="payState" style="margin-top:16px;">
             <?php if ($pending) { ?>
-                <div id="payLive"><div class="alert alert-info"><span class="spinner"></span> <strong>Waiting for the Payment Hub to confirm your payment.</strong> This page updates by itself the moment it does.</div></div>
+                <div id="payLive"><?php if ($order['hub_note']) { ?><div class="alert alert-error">⚠️ <?= e($order['hub_note']) ?></div><?php } else { ?><div class="alert alert-info"><span class="spinner"></span> <strong>Checking invoice <?= e(order_ref($order)) ?> with the Payment Hub…</strong> This page updates by itself the moment the Hub marks it paid.</div><?php } ?></div>
+                <p class="help" id="payHubStatus">Payment Hub status: <strong><?= e($order['hub_status'] ?: 'not checked yet') ?></strong></p>
+                <?php if (!$order['hub_note']) { /* a payment already reached the Hub for this invoice: never invite a second one */ ?>
                 <div class="form-actions">
                     <?php if ($order['hub_reference']) { ?><button type="button" class="btn-classic success hidden" id="hubPayBtn" style="font-size:1.1rem;">PAY <?= e(money($order['amount'])) ?></button><?php } ?>
                     <?php if ($hostedUrl) { ?><a class="btn-classic" id="hubPayLink" href="<?= e($hostedUrl) ?>" rel="noopener">Open the secure payment page</a><?php } ?>
                 </div>
+                <?php } ?>
                 <noscript><meta http-equiv="refresh" content="10"></noscript>
             <?php } else { ?>
                 <div class="alert alert-error">❌ <?= $order['status'] === 'expired' ? 'This payment request expired.' : ($order['status'] === 'refunded' ? 'This order was refunded.' : 'The payment was not completed.') ?> You have not been charged unless M-Pesa confirmed a payment.</div>
@@ -66,7 +69,7 @@ $error = '';
 if (is_post()) {                                                   // no JavaScript: go to the Hub's hosted payment page
     csrf_check();
     $r = checkout_start($type, $item['id']);
-    if ($r['ok']) { redirect($r['pay_url'] !== '' ? $r['pay_url'] : url('payment.php?o=' . rawurlencode($r['order']) . '&k=' . rawurlencode($r['key']))); }
+    if ($r['ok']) { redirect($r['pay_url'] !== '' ? $r['pay_url'] : url('payment.php?ref=' . rawurlencode($r['ref']) . '&k=' . rawurlencode($r['key']))); }
     $error = $r['message'];
 }
 $meta = ['title' => 'Pay for ' . $item['title'], 'robots' => 'noindex,nofollow', 'nav' => '', 'payment_widget' => true];

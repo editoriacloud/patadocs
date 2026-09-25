@@ -294,6 +294,10 @@ CREATE TABLE IF NOT EXISTS orders (
   hub_reference VARCHAR(100) NULL,
   stk_count     TINYINT UNSIGNED NOT NULL DEFAULT 0,
   stk_sent_at   DATETIME NULL,
+  invoice_ref   VARCHAR(100) NULL,
+  hub_invoice_id VARCHAR(100) NULL,
+  hub_status    VARCHAR(60) NULL,
+  hub_note      VARCHAR(255) NULL,
   search_log_id BIGINT UNSIGNED NULL,
   ip            VARCHAR(45) NULL,
   created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -305,6 +309,8 @@ CREATE TABLE IF NOT EXISTS orders (
   UNIQUE KEY uq_order_code (order_code),
   UNIQUE KEY uq_order_receipt (mpesa_receipt),
   KEY idx_order_status (status, created_at),
+  KEY idx_order_invoice_ref (invoice_ref),
+  KEY idx_order_hub_invoice (hub_invoice_id),
   KEY idx_order_phone (phone),
   KEY idx_order_doc (document_id),
   KEY idx_order_col (collection_id),
@@ -340,7 +346,7 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS webhook_events (
   id           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   event_id     VARCHAR(120) NOT NULL,
-  order_code   VARCHAR(20) NULL,
+  order_code   VARCHAR(100) NULL,
   signature_ok TINYINT(1) NOT NULL DEFAULT 0,
   payload      MEDIUMTEXT NULL,
   ip           VARCHAR(45) NULL,
@@ -629,7 +635,7 @@ CREATE TABLE IF NOT EXISTS hub_log (
   path        VARCHAR(190) NOT NULL,
   status      SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   duration_ms INT UNSIGNED NOT NULL DEFAULT 0,
-  order_code  VARCHAR(20) NULL,
+  order_code  VARCHAR(100) NULL,
   error       VARCHAR(255) NULL,
   response    TEXT NULL,
   created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -638,4 +644,4 @@ CREATE TABLE IF NOT EXISTS hub_log (
   KEY idx_hub_log_order (order_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '4') ON DUPLICATE KEY UPDATE setting_value = setting_value;
+INSERT INTO settings (setting_key, setting_value) VALUES ('schema_version', '5') ON DUPLICATE KEY UPDATE setting_value = setting_value;

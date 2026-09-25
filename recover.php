@@ -1,7 +1,7 @@
 <?php
 /**
  * PATADOCS — Recover a purchase (no customer accounts).
- * Ownership is proven with Order ID + the phone number used to pay, OR the M-Pesa transaction code.
+ * Ownership is proven with the invoice reference + the phone number used to pay, OR the M-Pesa transaction code.
  * Guessing an order number alone reveals nothing; attempts are rate limited.
  */
 require __DIR__ . '/includes/init.php';
@@ -18,7 +18,8 @@ if (is_post()) {
             $rc = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', post_str('receipt', 30)));
             if (strlen($rc) >= 8) { $order = db_row("SELECT * FROM orders WHERE mpesa_receipt = ? AND status = 'paid'", [$rc]); }
         } else {
-            $o = order_by_code(strtoupper(trim(post_str('order', 20))));
+            $ref = trim(post_str('order', 100));                  // the Hub invoice reference (older receipts: DOC-… codes)
+            $o = order_by_ref($ref) ?: order_by_code(strtoupper($ref));
             $phone = normalize_phone(post_str('phone', 20));
             if ($o && $phone !== '' && hash_equals((string)$o['phone'], $phone) && $o['status'] === 'paid') { $order = $o; }
         }
@@ -42,7 +43,7 @@ if (is_post()) {
         }
     }
 }
-$meta = ['title' => 'Recover Purchase', 'nav' => '', 'robots' => 'noindex,nofollow', 'canonical' => page_url('recover'), 'description' => 'Recover your purchased document with your Order ID and phone number.'];
+$meta = ['title' => 'Recover Purchase', 'nav' => '', 'robots' => 'noindex,nofollow', 'canonical' => page_url('recover'), 'description' => 'Recover your purchased document with your M-Pesa code, or your invoice reference and phone number.'];
 include __DIR__ . '/includes/header.php';
 ?>
 <section class="page-section active" id="page-recover">
@@ -50,7 +51,7 @@ include __DIR__ . '/includes/header.php';
         <div class="panel-header orange">RECOVER PURCHASE</div>
         <div class="panel-body">
             <?php if ($result) { ?>
-                <div class="alert alert-success">✅ Purchase verified — <strong><?= e($result['order']['item_title']) ?></strong> (Order <?= e($result['order']['order_code']) ?>)</div>
+                <div class="alert alert-success">✅ Purchase verified — <strong><?= e($result['order']['item_title']) ?></strong> (Invoice <?= e(order_ref($result['order'])) ?>)</div>
                 <?php foreach ($result['links'] as $l) { ?>
                     <div class="result-area" style="margin-bottom:10px;"><div class="result-row"><strong><?= e($l['title']) ?></strong> <span class="muted"><?= e($l['format']) ?></span>
                         <a class="btn-classic success btn-sm" style="margin-left:auto;" href="<?= e($l['url']) ?>">⬇ DOWNLOAD NOW</a></div></div>
@@ -62,14 +63,14 @@ include __DIR__ . '/includes/header.php';
                 <form class="pd-form" method="post" style="max-width:680px;">
                     <?= csrf_field() ?>
                     <div class="tabs" data-scope="#recoverTabs" style="margin-bottom:0;">
-                        <button type="button" class="tab<?= $mode === 'order' ? ' active' : '' ?>" data-tab="rec-order" onclick="document.getElementById('recMode').value='order'">Order ID + phone</button>
+                        <button type="button" class="tab<?= $mode === 'order' ? ' active' : '' ?>" data-tab="rec-order" onclick="document.getElementById('recMode').value='order'">Invoice reference + phone</button>
                         <button type="button" class="tab<?= $mode === 'receipt' ? ' active' : '' ?>" data-tab="rec-receipt" onclick="document.getElementById('recMode').value='receipt'">M-Pesa code</button>
                     </div>
                     <input type="hidden" name="mode" id="recMode" value="<?= e($mode) ?>">
                     <div id="recoverTabs">
                         <div class="tab-pane<?= $mode === 'order' ? ' active' : '' ?>" id="rec-order">
                             <div class="form-grid">
-                                <div class="frow"><label for="rOrder">Order ID</label><input type="text" id="rOrder" name="order" maxlength="20" placeholder="DOC-8F92K4X7" style="text-transform:uppercase;"></div>
+                                <div class="frow"><label for="rOrder">Invoice reference</label><input type="text" id="rOrder" name="order" maxlength="100" placeholder="as shown on your payment page / receipt"></div>
                                 <div class="frow"><label for="rPhone">Phone used to pay</label><input type="text" id="rPhone" name="phone" maxlength="20" placeholder="07XX XXX XXX"></div>
                             </div>
                         </div>

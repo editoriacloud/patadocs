@@ -370,7 +370,7 @@
        Buy → our server creates the invoice (POST /invoices) → EditoriaPay.open({ token: payment_intent.id }).
        The widget handles the phone number, STK prompt and PayBill. onSuccess is only a hint: the download page asks the
        Hub (GET /payment-intents/{id}/status) server-side and unlocks nothing unless the Hub says paid. */
-    var orderQs = function (r) { return '?o=' + encodeURIComponent(r.order) + '&k=' + encodeURIComponent(r.key); };
+    var orderQs = function (r) { return '?ref=' + encodeURIComponent(r.ref) + '&k=' + encodeURIComponent(r.key); };   // the Hub invoice reference
     var payNote = function (btn, html) {
         var box = btn.parentNode.querySelector('.pay-msg') || (btn.form && btn.form.querySelector('.pay-msg'));
         if (!box) { box = document.createElement('div'); box.className = 'pay-msg help'; box.setAttribute('role', 'status'); box.setAttribute('aria-live', 'polite'); btn.parentNode.insertBefore(box, btn.nextSibling); }
@@ -410,20 +410,22 @@
     /* Payment page (payment.php): poll until paid, then go to the success page */
     var payPage = $('#payPage');
     if (payPage) {
-        var st = $('#payLive') || $('#payState'), po = payPage.getAttribute('data-order'), pk = payPage.getAttribute('data-key'), t0 = Date.now();
+        var st = $('#payLive') || $('#payState'), po = payPage.getAttribute('data-ref'), pk = payPage.getAttribute('data-key'), t0 = Date.now();
         var hubPayBtn = $('#hubPayBtn'), ptoken = payPage.getAttribute('data-token');
         var initPayBtn = function () {                     // widget.js is deferred: it exists by DOMContentLoaded
             if (!hubPayBtn || !ptoken || !window.EditoriaPay) { return; }
             hubPayBtn.classList.remove('hidden');
             hubPayBtn.addEventListener('click', function () {
-                window.EditoriaPay.open({ token: ptoken, onSuccess: function () { window.location.href = PD.base + 'payment-success.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); }, onClose: function () { t0 = Date.now(); tick(); } });
+                window.EditoriaPay.open({ token: ptoken, onSuccess: function () { window.location.href = PD.base + 'payment-success.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); }, onClose: function () { t0 = Date.now(); tick(); } });
             });
         };
         if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initPayBtn); } else { initPayBtn(); }
         var tick = function () {
-            api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk)).then(function (r) {
-                if (r.status === 'paid') { window.location.href = PD.base + 'payment-success.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); return; }
+            api(PD.base + 'ajax/payment-status.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk)).then(function (r) {
+                if (r.status === 'paid') { window.location.href = PD.base + 'payment-success.php?ref=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); return; }
                 if (r.status === 'expired' || r.status === 'refunded') { st.innerHTML = '<div class="alert alert-error">❌ ' + esc(r.message || 'Payment was not completed.') + '</div>'; return; }
+                var hs = $('#payHubStatus'); if (hs && r.hub_status) { hs.innerHTML = 'Payment Hub status: <strong>' + esc(r.hub_status) + '</strong>'; }
+                if (r.note) { st.innerHTML = '<div class="alert alert-error">⚠️ ' + esc(r.note) + '</div>'; return; }   // paid at the Hub but blocked: say why, stop waiting
                 var age = Date.now() - t0;
                 if (age > 300000) { st.innerHTML = '<div class="alert alert-warn">⏳ The Payment Hub has not confirmed a payment yet. If you paid, <a href="">check again</a> in a minute — or pay with the button below.</div>'; return; }
                 setTimeout(tick, age < 90000 ? 1500 : 4000);

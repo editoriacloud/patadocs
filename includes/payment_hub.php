@@ -138,10 +138,15 @@ function hub_request(string $method, string $path, ?array $payload = null, strin
 /** Status words the Hub (or M-Pesa) may use. Anything else counts as "still pending". */
 function hub_status_word(string $w): string
 {
-    $w = strtolower(trim($w));
+    $w = strtolower(trim(str_replace([' ', '-'], '_', $w)));
     $ok = ['success', 'succeeded', 'successful', 'paid', 'completed', 'complete', 'confirmed', 'reconciled', 'settled', 'received', 'matched', 'fulfilled', 'captured', 'overpaid'];
     $bad = ['failed', 'failure', 'declined', 'cancelled', 'canceled', 'rejected', 'error', 'timeout', 'timed_out', 'expired', 'reversed', 'void', 'voided'];
-    return in_array($w, $ok, true) ? 'success' : (in_array($w, $bad, true) ? 'failed' : 'pending');
+    if (in_array($w, $ok, true)) { return 'success'; }
+    if (in_array($w, $bad, true)) { return 'failed'; }
+    // Variants such as "paid_in_full", "payment_confirmed", "completed_successfully" — but never "unpaid", "not_paid", "partially_paid"
+    if (!preg_match('/(^|_)(un|not|partial|partially|pending|awaiting|requires)/', $w) && preg_match('/(paid|succe|complet|confirm|reconcil|settle)/', $w)) { return 'success'; }
+    if (preg_match('/(fail|cancel|declin|expire|revers|reject)/', $w)) { return 'failed'; }
+    return 'pending';
 }
 
 /**
@@ -165,7 +170,9 @@ function hub_normalize(array $j): array
     $scopes = array_column($objs, 1);
     $inner = $scopes;                                        // scopes that may carry a payment status
     $scopes[] = $j;
-    if (!$inner) { $inner = [$j]; }
+    // The top level counts too — unless it is only an API envelope ({"status":"success","data":{…}}), whose status is
+    // about the HTTP call, not the payment. (An invoice's own "status":"paid" sits at the top next to its payment_intent.)
+    if (!isset($j['data']) || !is_array($j['data'])) { $inner[] = $j; }
     $pick = function (array $keys, ?array $in = null) use ($scopes) {
         foreach ($in ?? $scopes as $s) {
             foreach ($keys as $k) { if (isset($s[$k]) && !is_array($s[$k]) && !is_bool($s[$k]) && (string)$s[$k] !== '') { return (string)$s[$k]; } }
@@ -234,24 +241,52 @@ function hub_create_invoice(array $order): array
         $msg = is_string($j['message'] ?? null) && $r['status'] >= 400 && $r['status'] < 500 ? $j['message'] : 'The payment could not be started. Please try again.';
         return ['ok' => false, 'message' => $msg, 'intent_id' => '', 'invoice_id' => '', 'payment_url' => '', 'raw' => $r['raw']];
     }
-    return ['ok' => true, 'message' => '', 'intent_id' => $intentId, 'invoice_id' => (string)($inv['id'] ?? ($inv['invoice']['id'] ?? '')),
+    $invoiceId = (string)($inv['id'] ?? ($inv['invoice']['id'] ?? ''));
+    // The invoice reference the Hub shows (and puts on receipts); falls back to its public id
+    $ref = '';
+    foreach (['reference', 'invoice_reference', 'invoice_number', 'number', 'ref'] as $k) { if (!empty($inv[$k]) && is_scalar($inv[$k])) { $ref = (string)$inv[$k]; break; } }
+    return ['ok' => true, 'message' => '', 'intent_id' => $intentId, 'invoice_id' => $invoiceId, 'invoice_ref' => mb_substr($ref !== '' ? $ref : $invoiceId, 0, 100),
         'payment_url' => (string)($intent['payment_url'] ?? ''), 'raw' => $r['raw']];
 }
 
 /**
- * Asks the Hub for the authoritative status of an order's payment intent (server-to-server):
- * GET /payment-intents/{id}/status, falling back to GET /payment-intents/{id} if the status route is unavailable.
+ * Asks the Hub, server-to-server, whether this order's invoice is paid:
+ *   GET /invoices/{invoice id}                  — the invoice created for this order
+ *   GET /payment-intents/{id}/status            — "server-authoritative payment status" (→ GET /payment-intents/{id} if unavailable)
+ * Paid if either answer says paid (and belongs to this invoice / intent); failed only if nothing says paid.
+ * Returns ['ok', 'hub' => hub_normalize() + raw_status "invoice: x · intent: y", 'error'].
  */
 function hub_check(array $order): array
 {
     $intentId = (string)($order['hub_reference'] ?? '');
-    if ($intentId === '') { return ['ok' => false, 'hub' => null, 'error' => 'No payment intent for this order']; }
-    $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId) . '/status', null, '', (string)$order['order_code'], 10);
-    if (in_array($r['status'], [404, 405], true)) { $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId), null, '', (string)$order['order_code'], 10); }
-    if (!$r['ok'] || !$r['json']) { return ['ok' => false, 'hub' => null, 'error' => $r['error'] ?: 'Invalid Hub response']; }
-    $hub = hub_normalize($r['json']);
-    if ($hub['intent_id'] === '') { $hub['intent_id'] = $intentId; }
-    return ['ok' => true, 'hub' => $hub, 'raw' => $r['raw']];
+    $invoiceId = (string)($order['hub_invoice_id'] ?? '');
+    if ($intentId === '' && $invoiceId === '') { return ['ok' => false, 'hub' => null, 'error' => 'No Hub invoice for this order']; }
+    $label = (string)($order['invoice_ref'] ?: $order['order_code']);
+    $answers = []; $errors = [];
+    if ($invoiceId !== '') {
+        $r = hub_request('GET', '/invoices/' . rawurlencode($invoiceId), null, '', $label, 10);
+        if ($r['ok'] && $r['json']) { $answers['invoice'] = hub_normalize($r['json']); } else { $errors[] = 'invoice: ' . ($r['error'] ?: 'no answer'); }
+    }
+    // The payment intent is asked too when the invoice is not paid yet — or is paid but its answer lacks the M-Pesa receipt
+    // (kept on the order for "Recover purchase" and to stop a receipt being used twice).
+    if ($intentId !== '' && (!isset($answers['invoice']) || $answers['invoice']['state'] !== 'success' || $answers['invoice']['receipt'] === '')) {
+        $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId) . '/status', null, '', $label, 10);
+        if (in_array($r['status'], [404, 405], true)) { $r = hub_request('GET', '/payment-intents/' . rawurlencode($intentId), null, '', $label, 10); }
+        if ($r['ok'] && $r['json']) { $answers['intent'] = hub_normalize($r['json']); } else { $errors[] = 'payment intent: ' . ($r['error'] ?: 'no answer'); }
+    }
+    if (!$answers) { return ['ok' => false, 'hub' => null, 'error' => implode('; ', $errors)]; }
+    $pick = null;
+    foreach (['invoice', 'intent'] as $k) { if (isset($answers[$k]) && $answers[$k]['state'] === 'success') { $pick = $answers[$k]; break; } }
+    if (!$pick) { foreach (['intent', 'invoice'] as $k) { if (isset($answers[$k])) { $pick = $answers[$k]; break; } } }
+    if ($pick['receipt'] === '') { foreach ($answers as $a) { if ($a['receipt'] !== '') { $pick['receipt'] = $a['receipt']; break; } } }
+    if ($pick['phone'] === '') { foreach ($answers as $a) { if ($a['phone'] !== '') { $pick['phone'] = $a['phone']; break; } } }
+    $raw = []; foreach ($answers as $k => $a) { $raw[] = $k . ': ' . ($a['raw_status'] !== '' ? $a['raw_status'] : 'unknown'); }
+    $pick['raw_status'] = implode(' · ', $raw);
+    if ($pick['intent_id'] === '' && isset($answers['intent'])) { $pick['intent_id'] = $intentId; }
+    if ($pick['invoice_id'] === '' && isset($answers['invoice'])) { $pick['invoice_id'] = $invoiceId; }
+    // an invoice answer never carries a different invoice's id; an intent answer is about this intent
+    if (isset($answers['invoice']) && $pick === $answers['invoice'] && $pick['invoice_id'] === '') { $pick['invoice_id'] = $invoiceId; }
+    return ['ok' => true, 'hub' => $pick, 'error' => ''];
 }
 
 /**
@@ -279,6 +314,24 @@ function order_by_code(string $code): ?array
 {
     return preg_match('/^DOC-[A-Z0-9]{8}$/', $code) ? db_row('SELECT * FROM orders WHERE order_code = ?', [$code]) : null;
 }
+/** Order by the Hub's invoice reference (what the buyer sees) — or its invoice id. */
+function order_by_ref(string $ref): ?array
+{
+    $ref = trim($ref);
+    if ($ref === '' || strlen($ref) > 100 || !preg_match('/^[A-Za-z0-9._\-\/]+$/', $ref)) { return null; }
+    return db_row('SELECT * FROM orders WHERE invoice_ref = ? OR hub_invoice_id = ? ORDER BY id DESC LIMIT 1', [$ref, $ref]);
+}
+/** The order a page / AJAX call is about: ?ref=INVOICE-REF (older links: ?o=DOC-…) — plus its secret key ?k=. */
+function order_from_request(array $src): ?array
+{
+    $ref = trim((string)($src['ref'] ?? ''));
+    $o = $ref !== '' ? order_by_ref($ref) : order_by_code(strtoupper(trim((string)($src['o'] ?? ''))));
+    return $o && order_key_ok($o, (string)($src['k'] ?? '')) ? $o : null;
+}
+/** What identifies an order to people: the Hub invoice reference. */
+function order_ref(array $o): string { return (string)($o['invoice_ref'] ?: ($o['hub_invoice_id'] ?: $o['order_code'])); }
+/** Query string for the buyer's own order pages (invoice reference + secret key). */
+function order_qs(array $o): string { return 'ref=' . rawurlencode(order_ref($o)) . '&k=' . rawurlencode((string)$o['access_key']); }
 /** Proof-of-possession check: the access key is only known to the browser that created the order. */
 function order_key_ok(array $order, string $key): bool { return $key !== '' && hash_equals((string)$order['access_key'], $key); }
 
@@ -309,7 +362,7 @@ function order_start_payment(array $order): array
     $r = hub_create_invoice($order);
     if ($r['ok']) {
         db_exec("UPDATE payments SET status = 'pending', hub_reference = ?, response_json = ? WHERE id = ?", [$r['invoice_id'] ?: null, $r['raw'], $pid]);
-        db_exec('UPDATE orders SET hub_reference = ? WHERE id = ?', [$r['intent_id'], $order['id']]);
+        db_exec('UPDATE orders SET hub_reference = ?, hub_invoice_id = NULLIF(?, \'\'), invoice_ref = NULLIF(?, \'\') WHERE id = ?', [$r['intent_id'], $r['invoice_id'], $r['invoice_ref'], $order['id']]);
     } else {
         db_exec("UPDATE payments SET status = 'failed', result_desc = ?, response_json = ? WHERE id = ?", [mb_substr($r['message'], 0, 250), $r['raw'], $pid]);
     }
@@ -360,7 +413,7 @@ function checkout_start(string $type, int $id): array
 /** What the browser needs to open the Hub's widget for a pending order. */
 function checkout_result(array $order): array
 {
-    return ['ok' => true, 'order' => $order['order_code'], 'key' => $order['access_key'], 'token' => (string)$order['hub_reference'],
+    return ['ok' => true, 'ref' => order_ref($order), 'key' => $order['access_key'], 'token' => (string)$order['hub_reference'],
         'pay_url' => order_hosted_payment_url($order), 'message' => ''];
 }
 
@@ -391,20 +444,28 @@ function order_finalize(int $orderId, array $hub, string $source): array
         if ($o['status'] === 'refunded') { $pdo->rollBack(); return ['ok' => false, 'result' => 'refunded']; }
         $reject = function ($why) use ($pdo, $o, $source) {
             $pdo->rollBack();
-            log_error('Payment rejected (' . $why . ') order=' . $o['order_code'] . ' via ' . $source);
+            log_error('Payment rejected (' . $why . ') invoice=' . order_ref($o) . ' via ' . $source);
+            $notes = ['invoice_mismatch' => 'The Hub confirmed a payment for a different invoice.', 'intent_mismatch' => 'The Hub confirmed a payment for a different payment request.',
+                'amount_short' => 'The Hub reports less money paid than the price.', 'currency_mismatch' => 'The payment was in a different currency.', 'duplicate_receipt' => 'That M-Pesa receipt was already used for another purchase.'];
+            db_exec('UPDATE orders SET hub_note = ? WHERE id = ?', [mb_substr('Payment received by the Hub but not accepted: ' . ($notes[$why] ?? $why) . ' Please contact us with invoice ' . order_ref($o) . '.', 0, 255), $o['id']]);
             db_exec("UPDATE payments SET result_desc = ?, webhook_status = IF(? = 'webhook', 'rejected', webhook_status) WHERE order_id = ? ORDER BY id DESC LIMIT 1", [mb_substr('Rejected: ' . $why, 0, 250), $source, $o['id']]);
             return ['ok' => false, 'result' => $why];
         };
         if ($hub['state'] !== 'success') { $pdo->rollBack(); return ['ok' => false, 'result' => 'not_success']; }
-        if ($hub['reference'] !== '' && strcasecmp($hub['reference'], $o['order_code']) !== 0) { return $reject('reference_mismatch'); }
-        if ($hub['amount'] !== null && abs($hub['amount'] - (float)$o['amount']) > 0.009) { return $reject('amount_mismatch'); }
-        if ($hub['currency'] !== '' && strcasecmp($hub['currency'], $o['currency']) !== 0) { return $reject('currency_mismatch'); }
+        // Identity: the answer must be about THIS order's Hub invoice / payment intent (our internal code is not required —
+        // the invoice reference the Hub created is what identifies the purchase).
+        $mine = array_map('strtoupper', array_filter([(string)$o['hub_invoice_id'], (string)$o['invoice_ref'], (string)$o['hub_reference'], (string)$o['order_code']]));
+        if ($hub['invoice_id'] !== '' && !in_array(strtoupper($hub['invoice_id']), $mine, true)) { return $reject('invoice_mismatch'); }
         if ($hub['intent_id'] !== '' && (string)$o['hub_reference'] !== '' && $hub['intent_id'] !== (string)$o['hub_reference']) { return $reject('intent_mismatch'); }
+        if ($hub['reference'] !== '' && !in_array(strtoupper($hub['reference']), $mine, true) && $hub['invoice_id'] === '' && $hub['intent_id'] === '') { return $reject('invoice_mismatch'); }
+        // Money: at least the price (the Hub may report the invoice total rather than the amount paid — both are fine)
+        if ($hub['amount'] !== null && $hub['amount'] > 0 && $hub['amount'] + 0.009 < (float)$o['amount']) { return $reject('amount_short'); }
+        if ($hub['currency'] !== '' && strcasecmp($hub['currency'], $o['currency']) !== 0) { return $reject('currency_mismatch'); }
         $receipt = $hub['receipt'] !== '' ? $hub['receipt'] : null;
         if ($receipt && db_val('SELECT id FROM orders WHERE mpesa_receipt = ? AND id <> ?', [$receipt, $orderId])) { return $reject('duplicate_receipt'); }
 
         $payer = normalize_phone((string)($hub['phone'] ?? ''));        // the widget collected it; keep it for "Recover purchase"
-        db_exec("UPDATE orders SET status = 'paid', paid_at = NOW(), mpesa_receipt = ?, phone = IF(phone = '' AND ? <> '', ?, phone) WHERE id = ?", [$receipt, $payer, $payer, $orderId]);
+        db_exec("UPDATE orders SET status = 'paid', paid_at = NOW(), mpesa_receipt = ?, phone = IF(phone = '' AND ? <> '', ?, phone), hub_note = NULL, hub_status = LEFT(COALESCE(NULLIF(?, ''), 'paid'), 60) WHERE id = ?", [$receipt, $payer, $payer, (string)($hub['raw_status'] ?? ''), $orderId]);
         db_exec("UPDATE payments SET status = 'success', mpesa_receipt = COALESCE(?, mpesa_receipt), hub_reference = COALESCE(hub_reference, NULLIF(?, '')), confirmed_at = NOW(),
                  result_desc = ?, webhook_status = IF(? = 'webhook', 'verified', webhook_status) WHERE order_id = ? ORDER BY id DESC LIMIT 1",
             [$receipt, $hub['invoice_id'], mb_substr($hub['message'] ?: 'Confirmed via ' . $source, 0, 250), $source, $orderId]);
@@ -435,6 +496,7 @@ function order_refresh(array $order, bool $force = false): array
     if ($pay) { db_exec('UPDATE payments SET last_checked_at = NOW() WHERE id = ?', [$pay['id']]); }
     if (hub_configured()) {
         $c = hub_check($order);
+        db_exec('UPDATE orders SET hub_status = ? WHERE id = ?', [mb_substr($c['ok'] ? ($c['hub']['raw_status'] ?: 'pending') : 'unreachable', 0, 60), $order['id']]);
         if ($c['ok']) {
             if ($c['hub']['state'] === 'success') { $r = order_finalize((int)$order['id'], $c['hub'], 'status_check'); return $r['order'] ?? order_get((int)$order['id']); }
             if ($c['hub']['state'] === 'failed' && $order['status'] === 'pending') {
@@ -467,12 +529,12 @@ function order_notify(array $o): void
 {
     if (empty($o['email'])) { return; }
     $lines = ["Hello" . ($o['customer_name'] ? ' ' . $o['customer_name'] : '') . ",", '', 'Thank you! Your payment was received.', '',
-        'Order ID: ' . $o['order_code'], 'Item: ' . $o['item_title'], 'Amount: ' . money($o['amount']), ''];
+        'Invoice: ' . order_ref($o), 'Item: ' . $o['item_title'], 'Amount: ' . money($o['amount']), ''];
     $links = order_download_links($o);
     if ($links) { $lines[] = 'Download link' . (count($links) > 1 ? 's' : '') . ':'; foreach ($links as $l) { $lines[] = '- ' . $l['title'] . ': ' . $l['url']; } $lines[] = ''; }
-    $lines[] = 'Lost your link? Use "Recover purchase": ' . page_url('recover') . ' with your Order ID and phone number.';
+    $lines[] = 'Lost your link? Use "Recover purchase": ' . page_url('recover') . ' with your invoice reference or M-Pesa code.';
     $lines[] = ''; $lines[] = setting('site_name', 'PATADOCS');
-    send_mail($o['email'], 'Your ' . setting('site_name', 'PATADOCS') . ' order ' . $o['order_code'], implode("\n", $lines));
+    send_mail($o['email'], 'Your ' . setting('site_name', 'PATADOCS') . ' purchase — invoice ' . order_ref($o), implode("\n", $lines));
 }
 
 // ============================================================================
