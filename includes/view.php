@@ -242,12 +242,13 @@ function share_links_html(string $url, string $title): string
 function search_filters_html(array $o, array $facetFields): string
 {
     $sel = function ($name, $label, $opts, $cur, $attr = '') {
-        $h = '<div class="frow"><label>' . e($label) . '</label><select name="' . e($name) . '" data-filter ' . $attr . '>';
+        $id = 'flt_' . preg_replace('/[^a-z0-9_]/i', '_', $name);
+        $h = '<div class="frow"><label for="' . $id . '">' . e($label) . '</label><select id="' . $id . '" name="' . e($name) . '" data-filter ' . $attr . '>';
         foreach ($opts as $v => $t) { $h .= '<option value="' . e($v) . '"' . ((string)$v === (string)$cur ? ' selected' : '') . '>' . e($t) . '</option>'; }
         return $h . '</select></div>';
     };
     $h = '<div class="result-area filters" id="filterBox"><div class="filters-title">FILTERS</div><div class="filter-grid">';
-    $h .= '<div class="frow"><label>Category</label><select name="cat" data-filter>' . cat_options_html((int)($o['cat'] ?? 0), 0, true, 'All categories') . '</select></div>';
+    $h .= '<div class="frow"><label for="flt_cat">Category</label><select id="flt_cat" name="cat" data-filter>' . cat_options_html((int)($o['cat'] ?? 0), 0, true, 'All categories') . '</select></div>';
     foreach ($facetFields as $f) {
         $opts = ['' => 'All'];
         foreach ($f['values'] as $v => $n) { $opts[(string)$v] = $v . ' (' . $n . ')'; }
@@ -255,7 +256,7 @@ function search_filters_html(array $o, array $facetFields): string
     }
     $h .= $sel('format', 'Format', ['' => 'All formats', 'pdf' => 'PDF', 'word' => 'Word', 'image' => 'Image'], $o['format'] ?? '');
     $h .= $sel('price', 'Free / Paid', ['' => 'Free & paid', 'free' => 'Free only', 'paid' => 'Paid only'], $o['price'] ?? '');
-    $h .= '<div class="frow"><label>Price range (KSh)</label><div class="range-row"><input type="number" name="min" min="0" placeholder="Min" value="' . e($o['min'] ?? '') . '" data-filter><input type="number" name="max" min="0" placeholder="Max" value="' . e($o['max'] ?? '') . '" data-filter></div></div>';
+    $h .= '<div class="frow"><label>Price range (KSh)</label><div class="range-row"><input type="number" name="min" min="0" placeholder="Min" aria-label="Minimum price" value="' . e($o['min'] ?? '') . '" data-filter><input type="number" name="max" min="0" placeholder="Max" aria-label="Maximum price" value="' . e($o['max'] ?? '') . '" data-filter></div></div>';
     $h .= $sel('sort', 'Sort by', ['' => 'Best match', 'new' => 'Newest', 'popular' => 'Most popular', 'price_asc' => 'Price: low to high', 'price_desc' => 'Price: high to low', 'title' => 'Title A–Z'], $o['sort'] ?? '');
     $h .= '</div><div class="filter-actions"><button type="button" class="btn-classic btn-sm" id="filterReset">✕ RESET FILTERS</button></div></div>';
     return $h;

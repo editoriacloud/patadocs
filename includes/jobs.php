@@ -93,6 +93,7 @@ function jobs_web_tick(): void
         if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); }
         elseif (function_exists('litespeed_finish_request')) { @litespeed_finish_request(); }
         else { jobs_spawn(); return; }                                                 // mod_php: hand the work to a background request
+        if (session_status() === PHP_SESSION_ACTIVE) { session_write_close(); }      // release the visitor's session lock while jobs run
         try { jobs_run('web', null, 20); } catch (Throwable $e) { log_error('Web cron: ' . $e->getMessage()); }
     });
 }

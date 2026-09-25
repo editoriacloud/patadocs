@@ -82,9 +82,11 @@ function respond(bool $ok, string $message, array $extra = [], int $status = 400
 {
     if (is_xhr()) { json_out(array_merge(['ok' => $ok, 'message' => $message], $extra), $ok ? 200 : $status); }
     flash($ok ? 'success' : 'error', $message);
+    // Only same-site targets: compare with a trailing slash so https://site.com.evil.com does not pass
+    $local = function (string $u): bool { return $u === base_url() || strpos($u, base_url() . '/') === 0; };
     $back = post_str('return', 400);
-    if ($back === '' || strpos($back, base_url()) !== 0) { $back = (string)($_SERVER['HTTP_REFERER'] ?? ''); }
-    if ($back === '' || strpos($back, base_url()) !== 0) { $back = url(''); }
+    if (!$local($back)) { $back = (string)($_SERVER['HTTP_REFERER'] ?? ''); }
+    if (!$local($back)) { $back = url(''); }
     redirect($extra['redirect'] ?? $back);
 }
 

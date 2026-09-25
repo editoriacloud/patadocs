@@ -17,7 +17,7 @@ function job_payments(): string
     if (!hub_configured()) { return 'Payment Hub not configured — skipped.'; }
     // Unpaid orders from the last 2 days (+ orders that expired in the last 24 h: a PayBill payment can arrive late)
     $rows = db_all("SELECT * FROM orders WHERE hub_reference IS NOT NULL AND created_at < (NOW() - INTERVAL 1 MINUTE)
-                    AND ((status = 'pending' AND created_at > (NOW() - INTERVAL 2 DAY)) OR (status = 'expired' AND expires_at > (NOW() - INTERVAL 1 DAY)))
+                    AND ((status = 'pending' AND created_at > (NOW() - INTERVAL 2 DAY)) OR (status IN ('expired', 'failed') AND expires_at > (NOW() - INTERVAL 1 DAY)))
                     ORDER BY id DESC LIMIT 30");
     $paid = 0; $expired = 0;
     foreach ($rows as $o) {
@@ -135,7 +135,13 @@ function job_previews(): string
     if (setting('preview_enabled', '1') !== '1') { return 'Automatic previews are off.'; }
     $rows = db_all("SELECT id FROM documents WHERE status = 'published' AND preview_status = 'none' AND file_name IS NOT NULL ORDER BY id DESC LIMIT 3");
     $ok = 0;
-    foreach ($rows as $r) { $res = preview_generate((int)$r['id']); if (!empty($res['ok'])) { $ok++; } }
+    foreach ($rows as $r) {
+        $res = preview_generate((int)$r['id']);
+        if (!empty($res['ok'])) { $ok++; }
+        // some failures (missing file, no GD, unwritable folder) return early without a status: mark them so the
+        // same documents are not retried forever while newer ones wait behind them
+        else { db_exec("UPDATE documents SET preview_status = 'failed' WHERE id = ? AND preview_status = 'none'", [$r['id']]); }
+    }
     return 'Generated ' . $ok . ' of ' . count($rows) . ' missing preview(s).';
 }
 
@@ -185,7 +191,7 @@ function job_vocab(): string
     // Words from inside documents count only once they are common (avoids learning typos from the files)
     foreach (db_all("SELECT content_text FROM documents WHERE status = 'published' AND content_status = 'ok' ORDER BY id DESC LIMIT 2000") as $r) {
         $local = [];
-        foreach (preg_split('/[\s\/\-]+/u', search_norm(mb_substr((string)$r['content_text'], 0, 4000))) as $w) { $w = trim($w, " .'&"); if (mb_strlen($w) >= 4 && preg_match('/^\p{L}+$/u', $w)) { $local[$w] = true; } }
+        foreach (preg_split('/[\s\/\-]+/u', search_norm(mb_substr((string)$r['content_text'], 0, 4000))) as $w) { $w = trim($w, " .'&"); if (mb_strlen($w) >= 4 && mb_strlen($w) <= 60 && preg_match('/^\p{L}+$/u', $w)) { $local[$w] = true; } }
         foreach (array_keys($local) as $w) { $freq['~' . $w] = ($freq['~' . $w] ?? 0) + 1; }
     }
     foreach ($freq as $k => $n) { if ($k[0] === '~') { unset($freq[$k]); $w = substr($k, 1); if ($n >= 3) { $freq[$w] = ($freq[$w] ?? 0) + $n; } } }
@@ -196,7 +202,8 @@ function job_vocab(): string
         foreach (array_chunk($freq, 400, true) as $chunk) {
             $ph = []; $vals = [];
             foreach ($chunk as $w => $n) { $ph[] = '(?, ?, ?, ?)'; array_push($vals, $w, $n, min(255, mb_strlen($w)), mb_substr($w, 0, 1)); }
-            db_exec('INSERT INTO search_vocab (word, freq, len, first) VALUES ' . implode(', ', $ph), $vals);
+            // words that only differ by accents are equal under the table's collation: merge them instead of failing
+            db_exec('INSERT INTO search_vocab (word, freq, len, first) VALUES ' . implode(', ', $ph) . ' ON DUPLICATE KEY UPDATE freq = freq + VALUES(freq)', $vals);
         }
         $pdo->commit();
     } catch (Throwable $e) { $pdo->rollBack(); throw $e; }

@@ -352,6 +352,19 @@ function search_order(string $sort, bool $hasQuery): string
  * Main search. $o keys: q, cat, format(pdf|word|image), price(free|paid), min, max, tag, filters[key=>value],
  * sort, page, per. Returns rows + pagination + strict_total (exact matches) + relaxed flag.
  */
+/** levenshtein() counts bytes; map each distinct character to one byte first so "résumé" vs "resume" is 2 edits, not 4. */
+function mb_levenshtein(string $a, string $b): int
+{
+    if (!preg_match('/[^\x00-\x7F]/', $a . $b)) { return levenshtein($a, $b); }
+    $map = [];
+    $enc = function (string $s) use (&$map): string {
+        $out = '';
+        foreach (preg_split('//u', $s, -1, PREG_SPLIT_NO_EMPTY) as $ch) { $map[$ch] = $map[$ch] ?? chr(count($map) % 256); $out .= $map[$ch]; }
+        return $out;
+    };
+    return levenshtein($enc($a), $enc($b));
+}
+
 /**
  * Spelling correction from the learned vocabulary (Automation → Search vocabulary): each unknown word of 4+ letters is
  * replaced by the most frequent known word within 1 edit (2 for words of 8+ letters) that starts with the same letter.
@@ -368,7 +381,7 @@ function search_spell(string $q): string
             if ($len < 4 || $len > 40 || !preg_match('/^\p{L}+$/u', $w) || isset($syn[$w]) || db_val('SELECT 1 FROM search_vocab WHERE word = ?', [$w])) { $out[] = $w; continue; }
             $max = $len >= 8 ? 2 : 1; $best = null; $bestD = 99; $bestF = -1;
             foreach (db_all('SELECT word, freq FROM search_vocab WHERE first = ? AND len BETWEEN ? AND ? ORDER BY freq DESC LIMIT 3000', [mb_substr($w, 0, 1), $len - $max, $len + $max]) as $r) {
-                $d = levenshtein($w, $r['word']);
+                $d = mb_levenshtein($w, $r['word']);
                 if ($d <= $max && ($d < $bestD || ($d === $bestD && (int)$r['freq'] > $bestF))) { $best = $r['word']; $bestD = $d; $bestF = (int)$r['freq']; }
             }
             if ($best !== null) { $out[] = $best; $changed = true; } else { $out[] = $w; }

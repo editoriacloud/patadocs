@@ -423,12 +423,14 @@
     if (payPage) {
         var st = $('#payState'), po = payPage.getAttribute('data-order'), pk = payPage.getAttribute('data-key'), t0 = Date.now();
         var hubPayBtn = $('#hubPayBtn'), ptoken = payPage.getAttribute('data-token');
-        if (hubPayBtn && ptoken && window.EditoriaPay) {
+        var initPayBtn = function () {                     // widget.js is deferred: it exists by DOMContentLoaded
+            if (!hubPayBtn || !ptoken || !window.EditoriaPay) { return; }
             hubPayBtn.classList.remove('hidden');
             hubPayBtn.addEventListener('click', function () {
                 window.EditoriaPay.open({ token: ptoken, onSuccess: function () { t0 = Date.now(); }, onClose: function () { t0 = Date.now(); } });
             });
-        }
+        };
+        if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', initPayBtn); } else { initPayBtn(); }
         var tick = function () {
             api(PD.base + 'ajax/payment-status.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk)).then(function (r) {
                 if (r.status === 'paid') { window.location.href = PD.base + 'payment-success.php?o=' + encodeURIComponent(po) + '&k=' + encodeURIComponent(pk); return; }
