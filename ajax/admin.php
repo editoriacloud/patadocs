@@ -159,6 +159,7 @@ switch ($action) {
         };
         $checks = [
             $probe('POST', '/invoices', [], 'Create invoices', 'invoices.write', 'needed to start any payment'),
+            $probe('GET', '/invoices/patadocs-diagnostic', null, 'Read invoices', 'invoices.read', 'confirming payments by the invoice reference (GET /invoices/{id})'),
             $probe('GET', '/payment-intents/patadocs-diagnostic/status', null, 'Read payment status', 'payments.read', 'confirming payments (GET /payment-intents/{id}/status)'),
         ];
         $lines = []; $missing = 0;

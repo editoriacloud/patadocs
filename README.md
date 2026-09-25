@@ -89,13 +89,16 @@ Webhook → POST /ajax/webhook.php
 (`$meta['payment_widget']`). Without JavaScript, `payment.php` links to the Hub's hosted payment page instead.
 Response field names are mapped in one function, `hub_normalize()` in `includes/payment_hub.php`.
 
-**Flow (exactly as the Hub documents it):** *Buy* → PATADOCS creates the invoice server-side (`POST /api/v1/invoices`,
-Idempotency-Key = order code) → the page opens the Hub's widget with `EditoriaPay.open({ token: payment_intent.id })` (without JavaScript:
-the Hub's hosted payment page). The widget collects the phone number and runs STK / PayBill. PATADOCS grants access only when the Hub says
-the payment is confirmed — the signed `payment.confirmed` webhook, or `GET /api/v1/payment-intents/{id}/status` asked server-side (by the
-download page, the order status page and the 5-minute reconciliation job). `onSuccess` in the browser only sends the buyer to the download
-page, which checks the Hub first. The payer's number from the Hub is kept on the order for *Recover purchase*.
-**Scopes needed:** `invoices.write`, `payments.read` — *Settings → Payment Hub → Test connection* checks both.
+**Flow (exactly as the Hub documents it):** *Buy* → PATADOCS creates the invoice server-side (`POST /api/v1/invoices`) → the page opens
+the Hub's widget with `EditoriaPay.open({ token: payment_intent.id })` (without JavaScript: the Hub's hosted payment page). The widget
+collects the phone number and runs STK / PayBill.
+**The Hub's invoice reference identifies the purchase everywhere** — URLs (`payment.php?ref=INV-…&k=…`), the payment and download pages,
+*Recover purchase*, emails and the admin. Access is granted only when the Hub says that invoice is paid: the signed `payment.confirmed`
+webhook (matched by its `invoice_id`), or the server asking `GET /api/v1/invoices/{id}` and `GET /api/v1/payment-intents/{id}/status`
+(download page on every visit, the status page every 1.5 s, the 5-minute job). The answer must be about this invoice / payment intent and
+cover the price. The status page shows the Hub's own status words; if the Hub reports a payment that cannot be accepted (e.g. less money),
+it says so with the invoice reference instead of waiting, and hides the Pay button.
+**Scopes needed:** `invoices.write`, `invoices.read`, `payments.read` — *Settings → Payment Hub → Test connection* checks them.
 **Admin → Payments → Hub API log** shows every call to the Hub and its reply (tokens and phone numbers masked); rejected webhooks are listed
 under *Webhook events* with the reason (e.g. `bad_signature`).
 

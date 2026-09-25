@@ -71,6 +71,17 @@ function db_migrate(): void
             ['orders', 'stk_count', "ALTER TABLE orders ADD COLUMN stk_count TINYINT UNSIGNED NOT NULL DEFAULT 0 AFTER hub_reference"],
             ['orders', 'stk_sent_at', "ALTER TABLE orders ADD COLUMN stk_sent_at DATETIME NULL AFTER stk_count"],
         ],
+        5 => [   // the Hub's invoice reference identifies an order everywhere; last Hub verdict shown to the buyer
+            ['orders', 'invoice_ref', "ALTER TABLE orders ADD COLUMN invoice_ref VARCHAR(100) NULL AFTER hub_reference, ADD KEY idx_order_invoice_ref (invoice_ref)"],
+            ['orders', 'hub_invoice_id', "ALTER TABLE orders ADD COLUMN hub_invoice_id VARCHAR(100) NULL AFTER invoice_ref, ADD KEY idx_order_hub_invoice (hub_invoice_id)"],
+            ['orders', 'hub_status', "ALTER TABLE orders ADD COLUMN hub_status VARCHAR(60) NULL AFTER hub_invoice_id"],
+            ['orders', 'hub_note', "ALTER TABLE orders ADD COLUMN hub_note VARCHAR(255) NULL AFTER hub_status"],
+            "ALTER TABLE hub_log MODIFY order_code VARCHAR(100) NULL",
+            "ALTER TABLE webhook_events MODIFY order_code VARCHAR(100) NULL",
+            // existing orders: their invoice id was kept on the payment row
+            "UPDATE orders o JOIN (SELECT order_id, MAX(hub_reference) inv FROM payments WHERE hub_reference IS NOT NULL GROUP BY order_id) p ON p.order_id = o.id
+               SET o.hub_invoice_id = COALESCE(o.hub_invoice_id, p.inv), o.invoice_ref = COALESCE(o.invoice_ref, p.inv)",
+        ],
     ];
     $current = (int)setting('schema_version', 1);
     foreach ($steps as $version => $sqls) {

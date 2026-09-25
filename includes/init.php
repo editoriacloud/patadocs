@@ -27,7 +27,7 @@ require_once __DIR__ . '/catalog.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/view.php';
 
-const PD_SCHEMA_VERSION = 4;
+const PD_SCHEMA_VERSION = 5;
 if ((int)setting('schema_version', 1) < PD_SCHEMA_VERSION) { require_once __DIR__ . '/migrate.php'; db_migrate(); }
 
 security_boot();

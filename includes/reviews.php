@@ -63,8 +63,8 @@ function review_form_html(array $order, array $doc): string
     $opts = '';
     for ($i = 5; $i >= 1; $i--) { $opts .= '<label class="star-opt"><input type="radio" name="rating" value="' . $i . '"' . ($i === 5 ? ' required' : '') . '><span>' . str_repeat('★', $i) . '</span></label>'; }
     return '<form class="pd-form review-form" method="post" action="' . e(url('ajax/review.php')) . '" data-review-form>'
-        . csrf_field() . '<input type="hidden" name="o" value="' . e($order['order_code']) . '"><input type="hidden" name="k" value="' . e($order['access_key']) . '">'
-        . '<input type="hidden" name="doc" value="' . (int)$doc['id'] . '"><input type="hidden" name="return" value="' . e(url('payment-success.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key']))) . '">'
+        . csrf_field() . '<input type="hidden" name="ref" value="' . e(order_ref($order)) . '"><input type="hidden" name="k" value="' . e($order['access_key']) . '">'
+        . '<input type="hidden" name="doc" value="' . (int)$doc['id'] . '"><input type="hidden" name="return" value="' . e(url('payment-success.php?' . order_qs($order))) . '">'
         . '<div class="section-title" style="margin-top:0;">RATE “' . e(mb_strtoupper(excerpt($doc['title'], 60))) . '”</div>'
         . '<div class="star-pick">' . $opts . '</div>'
         . '<div class="form-grid"><div class="frow"><label>Your name (shown publicly)</label><input type="text" name="name" maxlength="80" placeholder="e.g. Jane W."></div>'

@@ -60,7 +60,7 @@ $zero = db_all("SELECT MAX(query) q, COUNT(*) n FROM search_logs WHERE results =
 
 // ---- Recent activity blocks ---------------------------------------------------------------------
 $rDocs = db_all('SELECT id, title, status, created_at FROM documents ORDER BY id DESC LIMIT 5');
-$rPay = db_all("SELECT order_code, item_title, amount, paid_at FROM orders WHERE status = 'paid' ORDER BY paid_at DESC LIMIT 5");
+$rPay = db_all("SELECT COALESCE(invoice_ref, order_code) AS order_code, item_title, amount, paid_at FROM orders WHERE status = 'paid' ORDER BY paid_at DESC LIMIT 5");
 $rCon = db_all('SELECT id, title, status, created_at FROM contributions ORDER BY id DESC LIMIT 5');
 $rRep = db_all('SELECT r.id, r.reason, r.created_at, d.title FROM document_reports r JOIN documents d ON d.id = r.document_id ORDER BY r.id DESC LIMIT 5');
 $rReq = db_all('SELECT id, title, status, created_at FROM document_requests ORDER BY id DESC LIMIT 5');

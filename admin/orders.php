@@ -10,11 +10,11 @@ if (get_int('id') > 0) {
     if (!$o) { abort_page(404, 'Order not found', 'This order does not exist.', [['↩ ORDERS', url('admin/orders.php')]]); }
     $pays = db_all('SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC', [$o['id']]);
     $tokens = db_all('SELECT t.*, d.title FROM download_tokens t JOIN documents d ON d.id = t.document_id WHERE t.order_id = ? ORDER BY t.id DESC', [$o['id']]);
-    $events = db_all('SELECT * FROM webhook_events WHERE order_code = ? ORDER BY id DESC', [$o['order_code']]);
+    $events = db_all('SELECT * FROM webhook_events WHERE order_code IN (?, ?, ?) ORDER BY id DESC', [$o['order_code'], (string)$o['invoice_ref'], (string)$o['hub_invoice_id']]);
     $logs = db_all('SELECT * FROM download_logs WHERE order_id = ? ORDER BY id DESC LIMIT 30', [$o['id']]);
-    $adm = ['title' => 'Order ' . $o['order_code'], 'active' => 'orders'];
+    $adm = ['title' => 'Invoice ' . order_ref($o), 'active' => 'orders'];
     include __DIR__ . '/../includes/admin_header.php'; ?>
-    <div class="panel"><div class="panel-header orange">ORDER <?= e($o['order_code']) ?> <?= e('· ' . strtoupper($o['status'])) ?></div><div class="panel-body">
+    <div class="panel"><div class="panel-header orange">INVOICE <?= e(order_ref($o)) ?> <?= e('· ' . strtoupper($o['status'])) ?></div><div class="panel-body">
         <div class="flex" style="margin-bottom:12px;"><a class="btn-classic btn-sm" href="orders.php">↩ ALL ORDERS</a>
             <?php if (admin_can('orders.manage')) {
                 if (in_array($o['status'], ['pending', 'expired'], true)) { echo '<button class="btn-classic btn-sm warning" data-act="order_recheck" data-id="' . $o['id'] . '">🔄 RE-CHECK WITH PAYMENT HUB</button>'; }
@@ -44,7 +44,7 @@ if (get_int('id') > 0) {
 db_exec("UPDATE orders SET status = 'expired' WHERE status = 'pending' AND expires_at < NOW()");
 $q = get_str('q', 60); $status = get_str('status', 10); $from = get_str('from', 10); $to = get_str('to', 10); $page = max(1, get_int('page', 1));
 $where = ['1=1']; $p = [];
-if ($q !== '') { $where[] = '(o.order_code LIKE ? OR o.phone LIKE ? OR o.mpesa_receipt LIKE ? OR o.item_title LIKE ? OR o.email LIKE ?)'; $l = '%' . like_escape($q) . '%'; array_push($p, $l, $l, $l, $l, $l); }
+if ($q !== '') { $where[] = '(o.invoice_ref LIKE ? OR o.hub_invoice_id LIKE ? OR o.order_code LIKE ? OR o.phone LIKE ? OR o.mpesa_receipt LIKE ? OR o.item_title LIKE ? OR o.email LIKE ?)'; $l = '%' . like_escape($q) . '%'; array_push($p, $l, $l, $l, $l, $l, $l, $l); }
 if (in_array($status, ['pending', 'paid', 'failed', 'expired', 'refunded'], true)) { $where[] = 'o.status = ?'; $p[] = $status; }
 if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) { $where[] = 'o.created_at >= ?'; $p[] = $from . ' 00:00:00'; }
 if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) { $where[] = 'o.created_at <= ?'; $p[] = $to . ' 23:59:59'; }
@@ -58,12 +58,12 @@ include __DIR__ . '/../includes/admin_header.php';
 ?>
 <div class="panel"><div class="panel-header">ORDERS <span style="font-weight:normal; font-size:.9rem;">(<?= num($total) ?> · paid total <?= e(money($sum)) ?>)</span></div><div class="panel-body">
     <div class="admin-bar"><form method="get">
-        <input type="text" name="q" placeholder="Order ID, phone, receipt, title..." value="<?= e($q) ?>">
+        <input type="text" name="q" placeholder="Invoice, phone, receipt, title..." value="<?= e($q) ?>">
         <select name="status" data-autosubmit><option value="">All statuses</option><?php foreach (['pending', 'paid', 'failed', 'expired', 'refunded'] as $s) { echo '<option value="' . $s . '"' . ($status === $s ? ' selected' : '') . '>' . ucfirst($s) . '</option>'; } ?></select>
         <input type="date" name="from" value="<?= e($from) ?>" style="width:auto;"><input type="date" name="to" value="<?= e($to) ?>" style="width:auto;">
         <button class="btn-classic primary btn-sm" type="submit">FILTER</button></form></div>
-    <div class="gv-wrap"><table class="gv-table compact"><thead><tr><th>Order ID</th><th>Document</th><th>Phone</th><th>Amount</th><th>Status</th><th>Payment</th><th>Download</th><th>Date</th><th>Actions</th></tr></thead><tbody>
-    <?php foreach ($rows as $o) { echo '<tr><td class="mono"><a href="?id=' . (int)$o['id'] . '">' . e($o['order_code']) . '</a></td><td class="doc-title">' . e(excerpt($o['item_title'], 46)) . '</td><td>' . e($o['phone']) . '</td><td class="doc-price">' . e(money($o['amount'])) . '</td><td>' . status_badge($o['status']) . '</td><td>' . ($o['pay_status'] ? status_badge($o['pay_status']) : '—') . ($o['mpesa_receipt'] ? '<span class="sub mono">' . e($o['mpesa_receipt']) . '</span>' : '') . '</td><td class="num">' . (int)$o['dls'] . '</td><td class="nowrap">' . e(fmt_date($o['created_at'], true)) . '</td><td class="actions"><a class="btn-classic btn-sm primary" href="?id=' . (int)$o['id'] . '">OPEN</a>'
+    <div class="gv-wrap"><table class="gv-table compact"><thead><tr><th>Invoice</th><th>Document</th><th>Phone</th><th>Amount</th><th>Status</th><th>Payment</th><th>Download</th><th>Date</th><th>Actions</th></tr></thead><tbody>
+    <?php foreach ($rows as $o) { echo '<tr><td class="mono"><a href="?id=' . (int)$o['id'] . '">' . e(order_ref($o)) . '</a></td><td class="doc-title">' . e(excerpt($o['item_title'], 46)) . '</td><td>' . e($o['phone']) . '</td><td class="doc-price">' . e(money($o['amount'])) . '</td><td>' . status_badge($o['status']) . '</td><td>' . ($o['pay_status'] ? status_badge($o['pay_status']) : '—') . ($o['mpesa_receipt'] ? '<span class="sub mono">' . e($o['mpesa_receipt']) . '</span>' : '') . '</td><td class="num">' . (int)$o['dls'] . '</td><td class="nowrap">' . e(fmt_date($o['created_at'], true)) . '</td><td class="actions"><a class="btn-classic btn-sm primary" href="?id=' . (int)$o['id'] . '">OPEN</a>'
         . (admin_can('orders.manage') && in_array($o['status'], ['pending', 'expired'], true) ? '<button class="btn-classic btn-sm warning" data-act="order_recheck" data-id="' . $o['id'] . '" title="Ask the Payment Hub">🔄</button>' : '') . '</td></tr>'; }
     if (!$rows) { echo '<tr><td colspan="9" class="empty-cell">No orders yet.</td></tr>'; } ?></tbody></table></div>
     <?= pager_html($pg, url('admin/orders.php'), array_filter(['q' => $q, 'status' => $status, 'from' => $from, 'to' => $to])) ?>

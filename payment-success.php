@@ -4,10 +4,10 @@ require __DIR__ . '/includes/init.php';
 require_once __DIR__ . '/includes/payment_hub.php';
 require_once __DIR__ . '/includes/reviews.php';
 
-$order = order_by_code(strtoupper(get_str('o', 20)));
-if (!$order || !order_key_ok($order, get_str('k', 64))) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
+$order = order_from_request($_GET);
+if (!$order) { abort_page(404, 'Order not found', 'We could not find that order. If you already paid, use "Recover purchase".', [['🧾 RECOVER PURCHASE', page_url('recover')], ['🏠 HOME', url('')]]); }
 $order = order_refresh($order, true);                             // never trust the browser: ask the Hub (payment-intents/{id}/status) now
-if ($order['status'] !== 'paid') { redirect(url('payment.php?o=' . rawurlencode($order['order_code']) . '&k=' . rawurlencode($order['access_key']))); }
+if ($order['status'] !== 'paid') { redirect(url('payment.php?' . order_qs($order))); }
 $links = order_download_links($order);
 $toReview = review_pending_docs($order);
 $meta = ['title' => 'Payment Successful', 'robots' => 'noindex,nofollow', 'nav' => ''];
@@ -26,7 +26,7 @@ include __DIR__ . '/includes/header.php';
         <?php if (!$links) { echo '<div class="alert alert-warn">Your download links have expired or been used. <a href="' . e(page_url('recover')) . '"><strong>Recover your purchase</strong></a> to get a fresh link.</div>'; } elseif (count($links) === 1 && $links[0]['fresh']) { echo '<div class="help">Your download will start automatically... Having trouble? Click <strong>Download Now</strong>.</div>'; }
         else { echo '<div class="help">Click <strong>Download Now</strong> to download. Each link can be used a limited number of times.</div>'; } ?>
         <div class="result-area" style="margin-top:16px; text-align:left;">
-            <div class="result-row"><strong>Order ID:</strong> <span class="mono"><?= e($order['order_code']) ?></span></div>
+            <div class="result-row"><strong>Invoice:</strong> <span class="mono"><?= e(order_ref($order)) ?></span></div>
             <?php if ($order['mpesa_receipt']) { echo '<div class="result-row"><strong>M-Pesa receipt:</strong> <span class="mono">' . e($order['mpesa_receipt']) . '</span></div>'; } ?>
             <div class="result-row"><strong>Amount paid:</strong> <?= e(money($order['amount'])) ?></div>
         </div>
@@ -36,7 +36,7 @@ include __DIR__ . '/includes/header.php';
                 <?php foreach ($toReview as $d) { echo review_form_html($order, $d); } ?>
             </div>
         <?php } ?>
-        <p class="help" style="margin-top:12px;">📌 Keep your Order ID — with the phone number you paid from, you can <a href="<?= e(page_url('recover')) ?>">recover this download</a> any time.</p>
+        <p class="help" style="margin-top:12px;">📌 Keep your invoice reference (<strong class="mono"><?= e(order_ref($order)) ?></strong>) or your M-Pesa code — with it you can <a href="<?= e(page_url('recover')) ?>">recover this download</a> any time.</p>
         <a class="btn-classic" href="<?= e(url('')) ?>">🏠 BACK TO HOME</a>
     </div></div>
 </section>

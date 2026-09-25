@@ -32,20 +32,22 @@ $eventType = strtolower((string)($j['event_type'] ?? ''));
 $eventId = mb_substr((string)$_SERVER['HTTP_X_EDITORIA_EVENT_ID'], 0, 120);
 try {
     db_insert('INSERT INTO webhook_events (event_id, order_code, signature_ok, payload, ip, result) VALUES (?, ?, 1, ?, ?, ?)',
-        [$eventId, $hub['reference'] !== '' ? substr($hub['reference'], 0, 20) : null, $raw, client_ip(), 'received']);
+        [$eventId, ($hub['invoice_id'] ?: $hub['reference']) !== '' ? substr($hub['invoice_id'] ?: $hub['reference'], 0, 100) : null, $raw, client_ip(), 'received']);
 } catch (PDOException $e) {
     if ($e->getCode() === '23000') { json_out(['ok' => true, 'message' => 'Duplicate event ignored']); }   // replay / Hub retry
     throw $e;
 }
 $setResult = function ($r) use ($eventId) { db_exec('UPDATE webhook_events SET result = ? WHERE event_id = ?', [mb_substr($r, 0, 60), $eventId]); };
 
-// Find the order: our order code (external_invoice_id), then the payment intent id, then the Hub invoice id.
-$order = $hub['reference'] !== '' ? order_by_code(strtoupper($hub['reference'])) : null;
-if (!$order && $hub['intent_id'] !== '') { $order = db_row('SELECT * FROM orders WHERE hub_reference = ? LIMIT 1', [$hub['intent_id']]); }
-if (!$order && $hub['invoice_id'] !== '') {
-    $order = order_by_code(strtoupper($hub['invoice_id']))
-        ?: db_row('SELECT o.* FROM orders o JOIN payments p ON p.order_id = o.id WHERE p.hub_reference = ? ORDER BY p.id DESC LIMIT 1', [$hub['invoice_id']]);
+// Find the order by the Hub's invoice ($event['invoice_id'] — the reference the Hub created), then the payment intent,
+// then the external_invoice_id we sent.
+$order = null;
+foreach (array_filter([$hub['invoice_id'], $hub['reference']]) as $ref) {
+    $order = order_by_ref($ref) ?: db_row('SELECT o.* FROM orders o JOIN payments p ON p.order_id = o.id WHERE p.hub_reference = ? ORDER BY p.id DESC LIMIT 1', [$ref]);
+    if ($order) { break; }
 }
+if (!$order && $hub['intent_id'] !== '') { $order = db_row('SELECT * FROM orders WHERE hub_reference = ? LIMIT 1', [$hub['intent_id']]); }
+if (!$order && $hub['reference'] !== '') { $order = order_by_code(strtoupper($hub['reference'])); }
 if (!$order) { $setResult('order_not_found'); json_out(['ok' => true, 'message' => 'Unknown order — ignored']); }
 
 db_exec("UPDATE payments SET webhook_status = 'received' WHERE order_id = ? AND webhook_status = 'none' ORDER BY id DESC LIMIT 1", [$order['id']]);
@@ -56,7 +58,7 @@ if ($eventType === 'payment.confirmed' || $hub['state'] === 'success') {
     // event itself is used (order_finalize still checks order code, amount, currency, intent and receipt).
     $c = hub_check($order);
     $source = $c['ok'] && $c['hub']['state'] === 'success' ? $c['hub'] : array_merge($hub, ['state' => 'success']);
-    if ($c['ok'] && $c['hub']['state'] !== 'success') { log_error('Webhook ' . $eventId . ' says paid but the Hub status endpoint says "' . $c['hub']['raw_status'] . '" for ' . $order['order_code'] . ' — trusting the signed webhook.'); }
+    if ($c['ok'] && $c['hub']['state'] !== 'success') { log_error('Webhook ' . $eventId . ' says paid but the Hub status says "' . $c['hub']['raw_status'] . '" for invoice ' . order_ref($order) . ' — trusting the signed webhook.'); }
     $r = order_finalize((int)$order['id'], $source, 'webhook');
     $setResult($r['result']);
     json_out(['ok' => true, 'result' => $r['result']]);

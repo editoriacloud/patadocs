@@ -160,10 +160,10 @@ function job_review_requests(): string
         db_exec('UPDATE orders SET review_asked_at = NOW() WHERE id = ?', [$o['id']]);    // mark first: never email twice
         $docs = review_pending_docs($o);
         if (!$docs) { continue; }
-        $link = url('payment-success.php?o=' . rawurlencode($o['order_code']) . '&k=' . rawurlencode($o['access_key'])) . '#rate';
+        $link = url('payment-success.php?' . order_qs($o)) . '#rate';
         $body = "Hello" . ($o['customer_name'] ? ' ' . $o['customer_name'] : '') . ",\n\nThank you for your purchase on " . setting('site_name', 'PATADOCS') . ".\n\n"
             . 'How did you find ' . (count($docs) === 1 ? '"' . $docs[0]['title'] . '"' : 'your documents') . "? A quick star rating helps other teachers, students and businesses choose the right document.\n\n"
-            . "Rate it here (takes 10 seconds):\n" . $link . "\n\nOrder ID: " . $o['order_code'] . "\n\n" . setting('site_name', 'PATADOCS');
+            . "Rate it here (takes 10 seconds):\n" . $link . "\n\nInvoice: " . order_ref($o) . "\n\n" . setting('site_name', 'PATADOCS');
         if (send_mail((string)$o['email'], 'How was your document? ⭐', $body)) { $sent++; } else { $failed++; }
     }
     if ($failed && !$sent) { throw new RuntimeException($failed . ' review request email(s) could not be sent — check that this server can send mail (PHP mail()).'); }
